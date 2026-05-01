@@ -1,0 +1,15 @@
+# Dev image for the Vite frontend.
+# Source is bind-mounted from the host; HMR runs over WebSocket on the
+# published port.
+FROM node:22-slim
+
+WORKDIR /usr/local/app
+
+COPY package*.json ./
+RUN npm install
+
+EXPOSE 5173
+
+# --host 0.0.0.0 so the dev server is reachable outside the container.
+# Polling is enabled via the CHOKIDAR_USEPOLLING env var on the compose service.
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

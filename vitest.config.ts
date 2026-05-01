@@ -1,12 +1,9 @@
 import { defineConfig } from "vitest/config";
+import dotenv from "dotenv";
 
-// Set test database connection before any modules load.
-// This must happen here (not in setupFiles) because Vitest imports
-// test modules before running setupFiles, and database.ts creates
-// the pool at import time.
-process.env.supabase =
-	"postgresql://postgres:postgres@127.0.0.1:54322/obsidian_test";
-process.env.NODE_ENV = "test";
+// Load .env.test before any modules import — database.ts creates its pool
+// at import time, so the connection string must already be on process.env.
+dotenv.config({ path: ".env.test" });
 
 export default defineConfig({
 	test: {

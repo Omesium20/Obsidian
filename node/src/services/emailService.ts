@@ -4,7 +4,7 @@ export const sendPasswordResetEmail = async (
 	to: string,
 	token: string
 ): Promise<void> => {
-	const resetLink = `${process.env.CLIENT_URL || "http://127.0.0.1:3000"}/reset-password?token=${token}`;
+	const resetLink = `${process.env.CLIENT_URL || "http://127.0.0.1:5173"}/reset-password?token=${token}`;
 
 	await transporter.sendMail({
 		from: EMAIL_FROM,
@@ -28,7 +28,7 @@ export const sendInvitationEmail = async (
 	groupName: string,
 	token: string
 ): Promise<void> => {
-	const inviteLink = `${process.env.CLIENT_URL || "http://127.0.0.1:3000"}/invitations?token=${token}`;
+	const inviteLink = `${process.env.CLIENT_URL || "http://127.0.0.1:5173"}/invitations?token=${token}`;
 
 	await transporter.sendMail({
 		from: EMAIL_FROM,

@@ -7,7 +7,7 @@ import { dirname, join } from "path";
 if (!process.env.supabase) {
 	const __filename = fileURLToPath(import.meta.url);
 	const __dirname = dirname(__filename);
-	dotenv.config({ path: join(__dirname, "../../../.env.local") });
+	dotenv.config({ path: join(__dirname, "../../../.env.dev") });
 }
 
 /**Connection string for Supabase */

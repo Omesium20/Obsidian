@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+@import "./styles/design.css";
+@import "./styles/landing.css";
+@import "./styles/auth-extra.css";

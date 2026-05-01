@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { TokenExpiredError } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import { verifyAccessToken, AccessTokenPayload } from "../utils/jwt.js";
 import { refreshTokens } from "../services/auth/refreshService.js";
 import AuthenticationError from "../errors/authenticationError.js";
@@ -22,16 +22,14 @@ export const authenticate = async (
 			throw new AuthenticationError("No token provided");
 		}
 
-		const cleanToken = token.startsWith("Bearer ")
-			? token.slice(7)
-			: token;
+		const cleanToken = token.startsWith("Bearer ") ? token.slice(7) : token;
 
 		try {
 			const payload = verifyAccessToken(cleanToken);
 			req.user = payload;
 			return next();
 		} catch (err) {
-			if (!(err instanceof TokenExpiredError)) {
+			if (!(err instanceof jwt.TokenExpiredError)) {
 				throw new AuthenticationError("Invalid token");
 			}
 		}
@@ -39,10 +37,13 @@ export const authenticate = async (
 		// Access token expired — attempt silent refresh
 		const incomingRefreshToken = req.cookies?.refreshToken;
 		if (!incomingRefreshToken) {
-			throw new AuthenticationError("Session expired, please log in again");
+			throw new AuthenticationError(
+				"Session expired, please log in again"
+			);
 		}
 
-		const { accessToken, refreshToken } = await refreshTokens(incomingRefreshToken);
+		const { accessToken, refreshToken } =
+			await refreshTokens(incomingRefreshToken);
 
 		res.cookie("access_token", `Bearer ${accessToken}`, {
 			httpOnly: true,

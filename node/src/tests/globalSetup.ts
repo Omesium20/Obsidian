@@ -3,9 +3,15 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
-const ADMIN_CONNECTION =
-	"postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const TEST_DB = "obsidian_test";
+
+// Derive admin + test URLs from the connection string vitest.config.ts loaded
+// out of .env.test. Single source of truth for the host:port.
+const TEST_DB_URL = process.env.supabase;
+if (!TEST_DB_URL) {
+	throw new Error("supabase env var must be set (loaded from .env.test)");
+}
+const ADMIN_CONNECTION = TEST_DB_URL.replace(/\/[^/]+$/, "/postgres");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,9 +33,7 @@ export async function setup() {
 	await adminClient.end();
 
 	// Connect to the test database and run migrations
-	const testClient = new Client({
-		connectionString: `postgresql://postgres:postgres@127.0.0.1:54322/${TEST_DB}`,
-	});
+	const testClient = new Client({ connectionString: TEST_DB_URL });
 	await testClient.connect();
 
 	const migrationsDir = path.resolve(__dirname, "../../../supabase/migrations");

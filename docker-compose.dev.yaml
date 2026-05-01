@@ -1,0 +1,85 @@
+name: obsidian-dev
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: obsidian-backend-dev
+    env_file: .env.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./node:/usr/local/app/node
+      - ./package.json:/usr/local/app/package.json
+      - ./package-lock.json:/usr/local/app/package-lock.json
+      - ./tsconfig.server.json:/usr/local/app/tsconfig.server.json
+      - ./tsconfig.app.json:/usr/local/app/tsconfig.app.json
+      - ./tsconfig.node.json:/usr/local/app/tsconfig.node.json
+      - ./tsconfig.json:/usr/local/app/tsconfig.json
+      - backend_node_modules:/usr/local/app/node_modules
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "node -e \"require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.dev
+    container_name: obsidian-frontend-dev
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_PROXY_TARGET: "http://backend:3000"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./src:/usr/local/app/src
+      - ./public:/usr/local/app/public
+      - ./index.html:/usr/local/app/index.html
+      - ./vite.config.ts:/usr/local/app/vite.config.ts
+      - ./tsconfig.app.json:/usr/local/app/tsconfig.app.json
+      - ./tsconfig.node.json:/usr/local/app/tsconfig.node.json
+      - ./tsconfig.server.json:/usr/local/app/tsconfig.server.json
+      - ./tsconfig.json:/usr/local/app/tsconfig.json
+      - ./package.json:/usr/local/app/package.json
+      - ./package-lock.json:/usr/local/app/package-lock.json
+      - frontend_node_modules:/usr/local/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # On-demand: `docker compose -f docker-compose.dev.yaml --profile test run --rm test`
+  # or use the `npm run test:docker` shortcut. Reuses the backend dev image.
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: obsidian-test
+    env_file: .env.test
+    volumes:
+      - ./node:/usr/local/app/node
+      - ./supabase:/usr/local/app/supabase
+      - ./vitest.config.ts:/usr/local/app/vitest.config.ts
+      - ./package.json:/usr/local/app/package.json
+      - ./package-lock.json:/usr/local/app/package-lock.json
+      - ./tsconfig.server.json:/usr/local/app/tsconfig.server.json
+      - ./tsconfig.app.json:/usr/local/app/tsconfig.app.json
+      - ./tsconfig.node.json:/usr/local/app/tsconfig.node.json
+      - ./tsconfig.json:/usr/local/app/tsconfig.json
+      - test_node_modules:/usr/local/app/node_modules
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: ["test"]
+    command: ["npx", "vitest", "run"]
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
+  test_node_modules:

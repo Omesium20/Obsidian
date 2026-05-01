@@ -9,7 +9,12 @@
       "Bash(npm view *)",
       "Bash(npx jest *)",
       "Bash(ls *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(unzip -l Obsidian-handoff.zip)",
+      "Bash(mkdir -p .handoff-tmp)",
+      "Bash(unzip -o Obsidian-handoff.zip -d .handoff-tmp)",
+      "Bash(sed 's/=.*$/=<redacted>/')",
+      "Bash(docker rmi obsidian-node-backend:latest *)"
     ]
   }
 }

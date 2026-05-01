@@ -1,0 +1,225 @@
+/* Invitation-page-specific styles */
+.invite-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(800px 500px at 50% -100px, color-mix(in oklch, var(--brand) 14%, transparent), transparent 70%),
+    radial-gradient(700px 500px at 100% 100%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 70%),
+    var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.invite-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 22px 32px;
+  max-width: 1200px; width: 100%; margin: 0 auto;
+}
+.invite-main {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px 24px 60px;
+}
+.invite-card {
+  width: 100%; max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+  padding: 36px 36px 28px;
+  display: flex; flex-direction: column; gap: 22px;
+}
+.invite-stack { display: flex; flex-direction: column; gap: 18px; align-items: center; }
+.invite-avatars {
+  display: flex; align-items: center; gap: 10px;
+  position: relative;
+}
+.invite-plus {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--ink-3);
+  font-weight: 500;
+}
+
+.invite-detail {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.detail-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.detail-row:last-child { border-bottom: 0; }
+.detail-icon {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-3); flex-shrink: 0;
+}
+.detail-label { font-size: 11.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; }
+.detail-value { font-size: 13.5px; color: var(--ink-2); margin-top: 1px; }
+
+.invite-perms { font-size: 13.5px; }
+.invite-perms-title {
+  font-size: 12px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.invite-perms ul {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.invite-perms ul li {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13.5px; color: var(--ink);
+}
+.invite-perms ul li svg { color: var(--brand); }
+.invite-perms ul.muted li {
+  color: var(--ink-4);
+  padding-left: 22px;
+  position: relative;
+}
+.invite-perms ul.muted li::before {
+  content: '×'; position: absolute; left: 4px; top: -1px;
+  color: var(--ink-4); font-weight: 600;
+}
+
+.invite-actions { display: flex; gap: 10px; }
+
+@media (max-width: 560px) {
+  .invite-card { padding: 28px 22px 22px; border-radius: 16px; }
+  .invite-header { padding: 18px 22px; }
+}
+
+/* Animate chart values when range changes */
+.chart-fade {
+  animation: chart-fade 360ms cubic-bezier(0.22, 0.8, 0.2, 1) both;
+}
+@keyframes chart-fade {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dash-bignum { transition: color 200ms ease; }
+
+/* FAQ */
+.faq {
+  max-width: 880px; margin: 0 auto;
+  padding: 80px 48px;
+}
+@media (max-width: 760px) { .faq { padding: 60px 24px; } }
+.faq-list {
+  display: flex; flex-direction: column;
+  gap: 12px;
+}
+.faq-item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.faq-item:hover { border-color: oklch(0.86 0.008 250); }
+.faq-item.open {
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+.faq-q {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 22px 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  font-family: inherit;
+  font-size: 18px; font-weight: 500;
+  letter-spacing: -0.018em;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.faq-icon {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  transition: transform 280ms cubic-bezier(0.22, 0.8, 0.2, 1), background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.faq-item.open .faq-icon {
+  transform: rotate(180deg);
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+.faq-a-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms cubic-bezier(0.22, 0.8, 0.2, 1);
+}
+.faq-a-wrap > .faq-a {
+  overflow: hidden;
+  min-height: 0;
+}
+.faq-item.open .faq-a-wrap { grid-template-rows: 1fr; }
+.faq-a-inner {
+  font-size: 15px;
+  color: var(--ink-2);
+  line-height: 1.65;
+  padding: 0 24px 22px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 18px;
+  margin-top: 2px;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 220ms ease 60ms, transform 220ms ease 60ms;
+}
+.faq-item.open .faq-a-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Minimal footer */
+.ln-foot-min { border-top: 1px solid var(--line); }
+.ln-foot-min-inner {
+  max-width: 1280px; margin: 0 auto;
+  padding: 24px 48px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+}
+.ln-foot-min-nav {
+  display: flex; gap: 24px;
+  font-size: 13.5px; color: var(--ink-2);
+}
+.ln-foot-min-nav a { cursor: pointer; }
+.ln-foot-min-nav a:hover { color: var(--ink); }
+.ln-foot-min-copy { font-size: 12.5px; color: var(--ink-4); }
+@media (max-width: 640px) {
+  .ln-foot-min-inner { padding: 20px 24px; flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+.tweaks-swatches {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+}
+.tweaks-swatch {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+  position: relative;
+  transition: transform 120ms ease;
+}
+.tweaks-swatch:hover { transform: translateY(-1px); }
+.tweaks-swatch-inner {
+  width: 100%; height: 100%; border-radius: 6px;
+}
+.tweaks-swatch.active {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--surface) inset;
+}

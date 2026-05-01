@@ -14,17 +14,42 @@ The two halves use different `tsconfig` files (`tsconfig.app.json` for the clien
 ## Commands
 
 ```bash
-npm run dev          # Vite dev server (frontend)
+npm run dev          # Vite dev server (frontend, native)
 npm run server       # Backend with nodemon + tsx (hot reload, runs node/src/server.ts)
 npm run build        # tsc -b && vite build (frontend production build)
 npm run build:server # Compile backend to node/dist/
 npm run lint         # ESLint over the repo
 npm test             # Vitest (single run, integration tests against local Postgres)
+
+# Containerized dev stack
+npm run dev:up       # supabase start + docker compose dev up (backend + frontend, hot reload)
+npm run dev:down     # docker compose dev down + supabase stop
+npm run test:docker  # Run vitest inside the test container against .env.test
 ```
 
 Run a single test file: `npx vitest run node/src/tests/repository/userRepository.test.ts`
 
 The test runner is configured with named projects in `vitest.config.ts` — to run one project: `npx vitest run --project users` (or `accounts`, `groups`, `transactions`, `refreshTokens`).
+
+## Environment files
+
+| File | Purpose | Loaded by |
+|---|---|---|
+| `.env.dev` | Backend dev runtime (DB connection, JWT secrets, SMTP). Hosts use `host.docker.internal` so the dev container can reach Supabase + Mailpit on the host. | `node/src/config/database.ts` (native) and `docker-compose.dev.yaml` `env_file` (containerized). |
+| `.env.test` | Test DB connection + JWT secrets. Points at the `obsidian_test` database via `host.docker.internal:54322`. | `vitest.config.ts` (via dotenv) and the `test` service in `docker-compose.dev.yaml`. |
+| `.env.docker.prod` | Prod container runtime. Read by `docker-compose.prod.yaml`. | Existing prod build only. |
+
+`.gitignore` excludes all `.env*` files.
+
+## Dev environments
+
+Two ways to run the dev stack — pick one per session, **don't run both at once** (port conflicts):
+
+**Native:** `npx supabase start` (once), then `npm run server` (terminal 1) and `npm run dev` (terminal 2). Fast iteration, debuggable from the IDE, doesn't need Docker beyond Supabase.
+
+**Containerized:** `npm run dev:up`. Spins up Supabase via the CLI, then builds and starts a `backend` container (Express, port 3000) and `frontend` container (Vite, port 5173) using `Dockerfile.dev` and `Dockerfile.frontend.dev`. Both have hot reload — source is bind-mounted, file watching uses polling (`--legacy-watch` for nodemon, `CHOKIDAR_USEPOLLING=true` for Vite) so changes are detected reliably through Docker bind mounts on Windows. The Vite proxy points at `http://backend:3000` via the `VITE_PROXY_TARGET` env var so `/api/*` reaches the sibling backend container instead of host loopback.
+
+`docker-compose.dev.yaml` also defines an on-demand `test` service (behind a `test` profile) that runs `vitest run` inside a container using `.env.test`. Trigger it via `npm run test:docker`.
 
 ## Backend Architecture
 
@@ -65,11 +90,13 @@ Schema is managed via Supabase CLI migrations in `supabase/migrations/` (timesta
 
 ## Testing
 
-Integration tests run against a real local Postgres (Supabase CLI's bundled instance at `127.0.0.1:54322`). `vitest.config.ts` hard-codes the test connection string and `NODE_ENV=test` **before any module loads** because `database.ts` creates the pool at import time.
+Integration tests run against a real local Postgres (Supabase CLI's bundled instance, reached via `host.docker.internal:54322` so the same connection string works from the host and from inside containers).
 
-`node/src/tests/globalSetup.ts` drops and recreates the `obsidian_test` database from `supabase/migrations/*.sql` on every run. Tests are configured with `fileParallelism: false` because all projects share one database — parallel TRUNCATE/INSERT would deadlock. Keep this in mind when adding new tests.
+`vitest.config.ts` calls `dotenv.config({ path: ".env.test" })` at the top of the file — this must happen before any module imports because `database.ts` creates its pool at import time. The connection string and `NODE_ENV=test` come from `.env.test`.
 
-The local Supabase stack must be running for tests to work (`npx supabase start`).
+`node/src/tests/globalSetup.ts` derives the admin connection (for the `postgres` superuser DB) from the test URL and drops/recreates the `obsidian_test` database from `supabase/migrations/*.sql` on every run. Tests are configured with `fileParallelism: false` because all projects share one database — parallel TRUNCATE/INSERT would deadlock. Keep this in mind when adding new tests.
+
+The local Supabase stack must be running for tests to work (`npx supabase start`). For containerized test runs use `npm run test:docker`.
 
 ## Email
 
@@ -78,3 +105,5 @@ The local Supabase stack must be running for tests to work (`npx supabase start`
 ## Deployment
 
 `Dockerfile` is a multi-stage build that compiles **only** the backend (`npm run build:server`) into `node/dist`, copies it to `/usr/local/app/build`, and runs `node build/server.js`. The frontend isn't deployed via this Dockerfile. `docker-compose.prod.yaml` reads `.env.docker.prod` and exposes port 3000.
+
+`Dockerfile.dev` and `Dockerfile.frontend.dev` are dev-only counterparts used by `docker-compose.dev.yaml` — they install all deps and run nodemon / vite respectively against bind-mounted source. Don't use them for production builds.
