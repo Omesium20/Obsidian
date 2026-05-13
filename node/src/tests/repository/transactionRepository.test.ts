@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import {
 	truncateAll,
 	seedUser,
@@ -6,7 +6,9 @@ import {
 	seedAccountMember,
 	seedTransaction,
 	seedAccountTransaction,
+	seedGroup,
 } from "../helpers/dbHelper.js";
+import { seedPlaidItem } from "../helpers/plaidHelper.js";
 import {
 	getAllTransactions,
 	findById,
@@ -17,15 +19,15 @@ import {
 import { ConflictError } from "../../errors/index.js";
 
 describe("transactionRepository", () => {
-	beforeEach(async () => {
-		await truncateAll();
-	});
-
-	// ============================================
+	// =========================================================================
 	// getAllTransactions
-	// ============================================
+	// =========================================================================
 
 	describe("getAllTransactions", () => {
+		beforeEach(async () => {
+			await truncateAll();
+		});
+
 		it("should return empty array when no transactions exist", async () => {
 			const txns = await getAllTransactions();
 			expect(txns).toEqual([]);
@@ -41,11 +43,15 @@ describe("transactionRepository", () => {
 		});
 	});
 
-	// ============================================
+	// =========================================================================
 	// findById
-	// ============================================
+	// =========================================================================
 
 	describe("findById", () => {
+		beforeEach(async () => {
+			await truncateAll();
+		});
+
 		it("should return the transaction by id", async () => {
 			const user = await seedUser();
 			const txn = await seedTransaction(user.id);
@@ -62,11 +68,15 @@ describe("transactionRepository", () => {
 		});
 	});
 
-	// ============================================
+	// =========================================================================
 	// newTransaction
-	// ============================================
+	// =========================================================================
 
 	describe("newTransaction", () => {
+		beforeEach(async () => {
+			await truncateAll();
+		});
+
 		it("should create a transaction and return it", async () => {
 			const user = await seedUser();
 
@@ -103,11 +113,15 @@ describe("transactionRepository", () => {
 		});
 	});
 
-	// ============================================
+	// =========================================================================
 	// deleteTransaction
-	// ============================================
+	// =========================================================================
 
 	describe("deleteTransaction", () => {
+		beforeEach(async () => {
+			await truncateAll();
+		});
+
 		it("should delete and return the transaction", async () => {
 			const user = await seedUser();
 			const txn = await seedTransaction(user.id);
@@ -116,7 +130,6 @@ describe("transactionRepository", () => {
 			expect(deleted).toBeDefined();
 			expect(deleted!.id).toBe(txn.id);
 
-			// Verify actually deleted
 			const found = await findById(txn.id);
 			expect(found).toBeUndefined();
 		});
@@ -127,29 +140,13 @@ describe("transactionRepository", () => {
 		});
 	});
 
-	// ============================================
-	// getTransactionsWithAccounts
-	// ============================================
+	// =========================================================================
+	// getTransactionsWithAccounts — SQL behavior (direct seeds)
+	// =========================================================================
 
-	describe("getTransactionsWithAccounts", () => {
-		it("should return transactions joined with account info", async () => {
-			const user = await seedUser();
-			const account = await seedAccount(user.id, {
-				account_name: "Main Checking",
-				institution_name: "Chase",
-			});
-			await seedAccountMember(account.id, user.id, "owner");
-
-			const txn = await seedTransaction(user.id, {
-				description: "Coffee",
-			});
-			await seedAccountTransaction(account.id, txn.id, "debit");
-
-			const results = await getTransactionsWithAccounts(user.id);
-			expect(results).toHaveLength(1);
-			expect(results[0].description).toBe("Coffee");
-			expect(results[0].account_name).toBe("Main Checking");
-			expect(results[0].institution_name).toBe("Chase");
+	describe("getTransactionsWithAccounts (direct seeds)", () => {
+		beforeEach(async () => {
+			await truncateAll();
 		});
 
 		it("should order by transaction_date descending", async () => {
@@ -187,11 +184,9 @@ describe("transactionRepository", () => {
 				await seedAccountTransaction(account.id, txn.id);
 			}
 
-			// Get page 2 with limit 2
+			// Ordered DESC: txn5, txn4, [txn3, txn2], txn1
 			const page = await getTransactionsWithAccounts(user.id, 2, 2);
 			expect(page).toHaveLength(2);
-			// Ordered DESC: txn5, txn4, [txn3, txn2], txn1
-			// offset 2, limit 2 = txn3, txn2
 			expect(page[0].description).toBe("txn3");
 			expect(page[1].description).toBe("txn2");
 		});
@@ -200,6 +195,40 @@ describe("transactionRepository", () => {
 			const user = await seedUser();
 			const results = await getTransactionsWithAccounts(user.id);
 			expect(results).toEqual([]);
+		});
+	});
+
+	// =========================================================================
+	// Plaid integration — one item created for the whole block
+	// =========================================================================
+
+	describe("Plaid integration", () => {
+		let userId: number;
+		let plaidAccounts: Awaited<
+			ReturnType<typeof seedPlaidItem>
+		>["accounts"];
+
+		beforeAll(async () => {
+			await truncateAll();
+			const user = await seedUser();
+			const group = await seedGroup(user.id);
+			const result = await seedPlaidItem(user.id, group.id);
+			userId = user.id;
+			plaidAccounts = result.accounts;
+		});
+
+		describe("getTransactionsWithAccounts", () => {
+			it("should return transactions joined with Plaid account info", async () => {
+				const results = await getTransactionsWithAccounts(userId);
+				expect(results.length).toBeGreaterThan(0);
+				expect(results[0].account_name).toBeDefined();
+				expect(results[0].institution_name).toBeDefined();
+
+				const accountNames = new Set(plaidAccounts.map((a) => a.account_name));
+				expect(
+					results.every((r) => accountNames.has(r.account_name))
+				).toBe(true);
+			});
 		});
 	});
 });

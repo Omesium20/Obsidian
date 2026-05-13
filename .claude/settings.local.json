@@ -21,7 +21,8 @@
       "Read(//c/Users/Owner/Documents/Projects/**)",
       "Bash(npx tsc *)",
       "Bash(npm run *)",
-      "Bash(docker volume rm *)"
+      "Bash(docker volume rm *)",
+      "Bash(npm test *)"
     ]
   }
 }

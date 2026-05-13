@@ -1,4 +1,5 @@
 import { pool } from "../../config/database.js";
+import { newGroup } from "../../repository/groupRepository.js";
 
 // All tables in dependency order (children first) for safe truncation
 const ALL_TABLES = [
@@ -152,6 +153,23 @@ export async function seedAccountTransaction(
 		[accountId, transactionId, transactionType]
 	);
 	return res.rows[0];
+}
+
+/**
+ * Creates a group with the given user as creator and returns the group row.
+ * Required before calling seedPlaidItem — exchangePublicToken needs a groupId
+ * to insert account_group_visibility rows.
+ */
+export async function seedGroup(
+	userId: number,
+	overrides: Record<string, unknown> = {}
+) {
+	const defaults = { name: "Test Group", member_count: 2 };
+	const data = { ...defaults, ...overrides };
+	return newGroup(
+		{ name: String(data.name), member_count: Number(data.member_count) },
+		userId
+	);
 }
 
 export { pool };

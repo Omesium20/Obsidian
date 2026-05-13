@@ -8,7 +8,7 @@ dotenv.config({ path: ".env.test" });
 export default defineConfig({
 	test: {
 		globalSetup: "./node/src/tests/globalSetup.ts",
-		testTimeout: 15000,
+		testTimeout: 60000,
 		// Run test files sequentially — all projects share one database,
 		// so parallel TRUNCATE/INSERT operations would deadlock.
 		fileParallelism: false,
@@ -16,6 +16,7 @@ export default defineConfig({
 			{
 				test: {
 					name: "users",
+					testTimeout: 60000,
 					include: [
 						"node/src/tests/repository/userRepository.test.ts",
 					],
@@ -24,6 +25,7 @@ export default defineConfig({
 			{
 				test: {
 					name: "accounts",
+					testTimeout: 60000,
 					include: [
 						"node/src/tests/repository/accountRepository.test.ts",
 					],
@@ -32,6 +34,7 @@ export default defineConfig({
 			{
 				test: {
 					name: "groups",
+					testTimeout: 60000,
 					include: [
 						"node/src/tests/repository/groupRepository.test.ts",
 					],
@@ -40,6 +43,7 @@ export default defineConfig({
 			{
 				test: {
 					name: "transactions",
+					testTimeout: 60000,
 					include: [
 						"node/src/tests/repository/transactionRepository.test.ts",
 					],
@@ -48,6 +52,7 @@ export default defineConfig({
 			{
 				test: {
 					name: "refreshTokens",
+					testTimeout: 60000,
 					include: [
 						"node/src/tests/repository/refreshTokenRepository.test.ts",
 					],
