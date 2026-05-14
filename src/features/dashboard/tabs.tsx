@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmt, RANGES, type RangeKey, type Slice, type Transaction, type View, type ViewKey } from "./data";
 import { BarChart, DualLineChart, PieChart } from "./charts";
+import { api, ApiError } from "../../lib/api";
 
 type ChartKind = "line" | "pie" | "bar";
 
@@ -423,6 +424,18 @@ const ACCOUNTS_BY_VIEW: Record<ViewKey, Account[]> = {
 	],
 };
 
+function formatSyncTime(iso: string | null): string {
+	if (!iso) return "Never synced";
+	return (
+		"Last synced at " +
+		new Date(iso).toLocaleTimeString("en-US", {
+			hour: "numeric",
+			minute: "2-digit",
+			hour12: true,
+		})
+	);
+}
+
 export function TabAccounts({ v, view }: { v: View; view: ViewKey }) {
 	const accts = ACCOUNTS_BY_VIEW[view] ?? ACCOUNTS_BY_VIEW.me;
 	const total = accts.reduce((a, b) => a + b.bal, 0);
@@ -433,6 +446,30 @@ export function TabAccounts({ v, view }: { v: View; view: ViewKey }) {
 		.filter((a) => a.t.startsWith("Invest") || a.t.startsWith("Retire"))
 		.reduce((s, a) => s + a.bal, 0);
 	const debt = accts.filter((a) => a.bal < 0).reduce((s, a) => s + a.bal, 0);
+
+	const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+	const [isSyncing, setIsSyncing] = useState(false);
+
+	useEffect(() => {
+		api.getSyncStatus()
+			.then((d) => {
+				setLastSyncedAt(d.last_synced_at);
+				setIsSyncing(d.is_syncing);
+			})
+			.catch(() => {});
+	}, []);
+
+	const handleSync = async () => {
+		setIsSyncing(true);
+		try {
+			const result = await api.triggerSync();
+			setLastSyncedAt(result.last_synced_at);
+		} catch (e) {
+			if (!(e instanceof ApiError && e.status === 409)) throw e;
+		} finally {
+			setIsSyncing(false);
+		}
+	};
 
 	return (
 		<div className="db-content" key={view}>
@@ -456,9 +493,20 @@ export function TabAccounts({ v, view }: { v: View; view: ViewKey }) {
 				<div className="panel-head">
 					<div>
 						<h2 className="panel-h">Connected accounts</h2>
-						<p className="panel-sub">{v.name} · read-only · synced 2 minutes ago</p>
+						<p className="panel-sub">
+							{v.name} · read-only · {formatSyncTime(lastSyncedAt)}
+						</p>
 					</div>
-					<button className="btn btn-sm btn-brand">+ Add account</button>
+					<div className="panel-controls">
+						<button
+							className="btn btn-sm"
+							onClick={handleSync}
+							disabled={isSyncing}
+						>
+							{isSyncing ? "Syncing…" : "Sync now"}
+						</button>
+						<button className="btn btn-sm btn-brand">+ Add account</button>
+					</div>
 				</div>
 				<ul className="acct-list">
 					{accts.map((a, i) => (

@@ -1,5 +1,6 @@
 import app from "./app.js";
 import { pool } from "./config/database.js";
+import { startScheduledSync } from "./services/plaid/scheduledSyncService.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -33,6 +34,8 @@ async function startServer() {
 			);
 			console.log(`🔗 Health check: http://localhost:${PORT}/health`);
 		});
+
+		startScheduledSync();
 
 		// ============================================
 		// Graceful Shutdown

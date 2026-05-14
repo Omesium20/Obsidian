@@ -265,6 +265,104 @@ export const listActiveMemberIds = async (
 	}
 };
 
+// Atomically claim the sync lock for a group. Returns true if the lock was
+// acquired, false if another sync is already running for this group.
+export const claimGroupSync = async (groupId: number): Promise<boolean> => {
+	try {
+		const res = await pool.query(
+			`UPDATE groups
+			    SET is_syncing = TRUE, sync_started_at = NOW()
+			  WHERE id = $1
+			    AND is_syncing = FALSE
+			  RETURNING id`,
+			[groupId]
+		);
+		return (res.rowCount ?? 0) === 1;
+	} catch (e) {
+		throw new DatabaseError("Failed to claim group sync lock", {
+			groupId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Release the sync lock and record completion time.
+export const releaseGroupSync = async (groupId: number): Promise<void> => {
+	try {
+		await pool.query(
+			`UPDATE groups
+			    SET is_syncing = FALSE,
+			        last_synced_at = NOW(),
+			        sync_started_at = NULL
+			  WHERE id = $1`,
+			[groupId]
+		);
+	} catch (e) {
+		throw new DatabaseError("Failed to release group sync lock", {
+			groupId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Reset any locks older than 10 minutes — handles processes that crashed
+// mid-sync and never released. Does not update last_synced_at so the group
+// stays eligible for the next cron run.
+export const resetStaleGroupLocks = async (): Promise<void> => {
+	try {
+		await pool.query(
+			`UPDATE groups
+			    SET is_syncing = FALSE, sync_started_at = NULL
+			  WHERE is_syncing = TRUE
+			    AND sync_started_at < NOW() - INTERVAL '10 minutes'`
+		);
+	} catch (e) {
+		throw new DatabaseError("Failed to reset stale group sync locks", {
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Return all groups whose next sync falls within the next hour (i.e. last
+// synced 7+ hours ago) and are not currently locked. NULL = never synced.
+export const getGroupsDueForSync = async (): Promise<Group[]> => {
+	try {
+		const res = await pool.query(
+			`SELECT * FROM groups
+			  WHERE (last_synced_at IS NULL
+			      OR last_synced_at + INTERVAL '7 hours' <= NOW())
+			    AND is_syncing = FALSE`
+		);
+		return res.rows;
+	} catch (e) {
+		throw new DatabaseError("Failed to fetch groups due for sync", {
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Return the sync status fields for a single group (used by the dashboard).
+export const getGroupSyncStatus = async (
+	groupId: number
+): Promise<{ last_synced_at: Date | null; is_syncing: boolean }> => {
+	try {
+		const res = await pool.query(
+			`SELECT last_synced_at, is_syncing FROM groups WHERE id = $1`,
+			[groupId]
+		);
+		const row = res.rows[0];
+		return {
+			last_synced_at: row?.last_synced_at ? new Date(row.last_synced_at) : null,
+			is_syncing: row?.is_syncing ?? false,
+		};
+	} catch (e) {
+		throw new DatabaseError("Failed to fetch group sync status", {
+			groupId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
 // Delete group part of a larger function in the services where it will check if you have membership of "creator" this is the atomic action
 export const deleteGroup = async (
 	groupId: number,

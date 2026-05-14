@@ -58,6 +58,15 @@ export default defineConfig({
 					],
 				},
 			},
+			{
+				test: {
+					name: "plaidSync",
+					testTimeout: 60000,
+					include: [
+						"node/src/tests/repository/plaidSyncRepository.test.ts",
+					],
+				},
+			},
 		],
 	},
 });

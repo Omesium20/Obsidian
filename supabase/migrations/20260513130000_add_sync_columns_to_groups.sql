@@ -1,0 +1,4 @@
+ALTER TABLE groups
+  ADD COLUMN last_synced_at  TIMESTAMPTZ,
+  ADD COLUMN is_syncing      BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN sync_started_at TIMESTAMPTZ;

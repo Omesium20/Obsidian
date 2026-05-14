@@ -7,7 +7,6 @@ import {
 	seedTransaction,
 	seedAccountTransaction,
 	seedGroup,
-	pool,
 } from "../helpers/dbHelper.js";
 import { seedPlaidItem } from "../helpers/plaidHelper.js";
 import {
@@ -289,14 +288,19 @@ describe("accountRepository", () => {
 			it("should return accounts where user is owner", async () => {
 				const accessible = await getAccessibleAccounts(userId);
 				expect(accessible.length).toBe(plaidAccounts.length);
-				expect(accessible.every((a) => a.user_id === userId)).toBe(true);
+				expect(accessible.every((a) => a.user_id === userId)).toBe(
+					true
+				);
 			});
 		});
 
 		describe("getAccountMembership", () => {
 			it("should return the membership record for a Plaid account", async () => {
 				const target = plaidAccounts[0];
-				const membership = await getAccountMembership(userId, target.id);
+				const membership = await getAccountMembership(
+					userId,
+					target.id
+				);
 				expect(membership).toBeDefined();
 				expect(membership!.ownership_type).toBe("owner");
 			});

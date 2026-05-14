@@ -155,12 +155,37 @@ export const updateCursor = async (
 ): Promise<void> => {
 	try {
 		await pool.query(
-			`UPDATE plaid_items SET transactions_cursor = $1 WHERE id = $2`,
+			`UPDATE plaid_items
+			    SET transactions_cursor = $1,
+			        last_synced_at = NOW()
+			  WHERE id = $2`,
 			[cursor, id]
 		);
 	} catch (e) {
 		throw new DatabaseError("Failed to update transactions_cursor", {
 			id,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+export const findByGroupMembers = async (
+	groupId: number
+): Promise<PlaidItem[]> => {
+	try {
+		const res = await pool.query(
+			`SELECT pi.*
+			   FROM plaid_items pi
+			   JOIN group_memberships gm ON gm.user_id = pi.user_id
+			  WHERE gm.group_id = $1
+			    AND gm.departed_at IS NULL
+			  ORDER BY pi.id`,
+			[groupId]
+		);
+		return res.rows;
+	} catch (e) {
+		throw new DatabaseError("Failed to fetch plaid_items for group members", {
+			groupId,
 			cause: e instanceof Error ? e.message : String(e),
 		});
 	}

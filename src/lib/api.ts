@@ -114,4 +114,20 @@ export const api = {
 			method: "POST",
 			body: JSON.stringify({ public_token }),
 		}),
+
+	triggerSync: () =>
+		request<{
+			synced: number;
+			total: number;
+			added: number;
+			modified: number;
+			removed: number;
+			last_synced_at: string | null;
+			errors?: Array<{ itemId: number; message: string }>;
+		}>("/api/v1/plaid/sync", { method: "POST" }),
+
+	getSyncStatus: () =>
+		request<{ last_synced_at: string | null; is_syncing: boolean }>(
+			"/api/v1/plaid/sync-status"
+		),
 };

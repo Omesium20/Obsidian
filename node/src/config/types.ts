@@ -310,20 +310,29 @@ export type Database = {
         Row: {
           created_at: string | null
           id: number
+          is_syncing: boolean
+          last_synced_at: string | null
           member_count: number | null
           name: string
+          sync_started_at: string | null
         }
         Insert: {
           created_at?: string | null
           id?: number
+          is_syncing?: boolean
+          last_synced_at?: string | null
           member_count?: number | null
           name: string
+          sync_started_at?: string | null
         }
         Update: {
           created_at?: string | null
           id?: number
+          is_syncing?: boolean
+          last_synced_at?: string | null
           member_count?: number | null
           name?: string
+          sync_started_at?: string | null
         }
         Relationships: []
       }
@@ -432,6 +441,7 @@ export type Database = {
           id: number
           institution_id: string | null
           institution_name: string | null
+          last_synced_at: string | null
           plaid_item_id: string
           transactions_cursor: string | null
           updated_at: string | null
@@ -445,6 +455,7 @@ export type Database = {
           id?: number
           institution_id?: string | null
           institution_name?: string | null
+          last_synced_at?: string | null
           plaid_item_id: string
           transactions_cursor?: string | null
           updated_at?: string | null
@@ -458,6 +469,7 @@ export type Database = {
           id?: number
           institution_id?: string | null
           institution_name?: string | null
+          last_synced_at?: string | null
           plaid_item_id?: string
           transactions_cursor?: string | null
           updated_at?: string | null
