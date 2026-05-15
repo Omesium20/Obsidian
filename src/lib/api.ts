@@ -37,6 +37,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+	getSession: () =>
+		request<{ userId: number; groupId: number | null; role: string | null }>(
+			"/api/v1/session"
+		),
+
 	login: (email: string, password: string) =>
 		request<{ message: string }>("/api/v1/login", {
 			method: "POST",
