@@ -5,6 +5,7 @@ import {
 	createInvitation,
 	findValidInvitationByToken,
 	findPendingInvitationForEmail,
+	findInvitationPreviewByToken,
 	invalidatePendingInvitation,
 	acceptInvitationAndJoinGroup,
 	updateInvitationStatus,
@@ -153,6 +154,26 @@ export const declineInvitation = async (
 	}
 
 	await updateInvitationStatus(invitation.id, "declined");
+};
+
+export const getInvitationPreview = async (rawToken: string) => {
+	const tokenHash = hashToken(rawToken);
+	const inv = await findInvitationPreviewByToken(tokenHash);
+
+	if (!inv) {
+		throw new NotFoundError("Invitation", rawToken);
+	}
+
+	const [local, domain] = inv.invitee_email.split("@");
+	const maskedLocal = local[0] + "*".repeat(Math.min(local.length - 1, 4));
+	const inviteeEmailMasked = `${maskedLocal}@${domain}`;
+
+	return {
+		inviter_name: inv.inviter_name,
+		group_name: inv.group_name,
+		invitee_email_masked: inviteeEmailMasked,
+		expires_at: inv.expires_at,
+	};
 };
 
 export { purgeExpiredInvitations };

@@ -173,6 +173,34 @@ export const invalidatePendingInvitation = async (
 	}
 };
 
+export const findInvitationPreviewByToken = async (
+	tokenHash: string
+): Promise<{
+	invitee_email: string;
+	inviter_name: string;
+	group_name: string;
+	expires_at: Date;
+} | undefined> => {
+	try {
+		const res = await pool.query(
+			`SELECT i.invitee_email,
+			        i.expires_at,
+			        u.first_name || ' ' || u.last_name AS inviter_name,
+			        g.name AS group_name
+			   FROM invitations i
+			   JOIN users u ON u.id = i.inviter_user_id
+			   JOIN groups g ON g.id = i.group_id
+			  WHERE i.token = $1 AND i.status = 'pending' AND i.expires_at > NOW()`,
+			[tokenHash]
+		);
+		return res.rows[0];
+	} catch (e) {
+		throw new DatabaseError("Failed to fetch invitation preview", {
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
 export const purgeExpiredInvitations = async (): Promise<number> => {
 	try {
 		const res = await pool.query(

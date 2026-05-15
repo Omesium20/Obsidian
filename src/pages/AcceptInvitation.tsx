@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Wordmark } from "../components/Wordmark";
 import {
 	IconArrow,
@@ -12,27 +12,40 @@ import { useQueryParam, useRouter } from "../lib/router";
 import { api, ApiError } from "../lib/api";
 import type { ReactNode } from "react";
 
-type State = "idle" | "accepted" | "declined" | "needs-auth";
+type State = "loading" | "idle" | "accepted" | "declined" | "needs-auth" | "wrong-account" | "invalid";
+
+interface PreviewData {
+	inviter_name: string;
+	group_name: string;
+	invitee_email_masked: string;
+	expires_at: string;
+}
 
 export function AcceptInvitation() {
 	const { navigate } = useRouter();
 	const token = useQueryParam("token") || "";
-	const [state, setState] = useState<State>("idle");
+	const [state, setState] = useState<State>("loading");
+	const [preview, setPreview] = useState<PreviewData | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [err, setErr] = useState("");
 
-	const inv = {
-		group: "your invited group",
-		role: "Member",
-		expiresIn: "7 days",
-	};
+	useEffect(() => {
+		if (!token) {
+			setState("invalid");
+			return;
+		}
+		api.getInvitationPreview(token)
+			.then((data) => {
+				setPreview(data);
+				setState("idle");
+			})
+			.catch(() => {
+				setState("invalid");
+			});
+	}, [token]);
 
 	const handle = async (action: "accept" | "decline") => {
 		setErr("");
-		if (!token) {
-			setErr("This invitation link is missing a token.");
-			return;
-		}
 		setLoading(true);
 		try {
 			if (action === "accept") {
@@ -45,6 +58,8 @@ export function AcceptInvitation() {
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 401) {
 				setState("needs-auth");
+			} else if (e instanceof ApiError && e.status === 403) {
+				setState("wrong-account");
 			} else {
 				setErr(e instanceof ApiError ? e.message : "Something went wrong. Please try again.");
 			}
@@ -63,6 +78,18 @@ export function AcceptInvitation() {
 		navigate(`/register?returnTo=${returnTo}`);
 	};
 
+	const doLogout = async () => {
+		try {
+			await api.logout();
+		} catch {
+			// ignore — cookies are cleared server-side on logout
+		}
+		goLogin();
+	};
+
+	const groupName = preview?.group_name ?? "your invited group";
+	const inviterName = preview?.inviter_name ?? "Someone";
+
 	return (
 		<div className="invite-page">
 			<header className="invite-header">
@@ -79,12 +106,47 @@ export function AcceptInvitation() {
 			</header>
 
 			<main className="invite-main">
+				{state === "loading" && (
+					<div className="invite-card fade-in" style={{ textAlign: "center", color: "var(--ink-3)" }}>
+						Loading invitation…
+					</div>
+				)}
+
+				{state === "invalid" && (
+					<div className="invite-card fade-in" style={{ textAlign: "center" }}>
+						<h1
+							style={{
+								fontSize: 26,
+								letterSpacing: "-0.028em",
+								fontWeight: 600,
+								margin: "0 0 10px",
+							}}
+						>
+							Invitation not found.
+						</h1>
+						<p
+							style={{
+								fontSize: 14.5,
+								color: "var(--ink-3)",
+								maxWidth: 420,
+								margin: "0 auto 24px",
+								lineHeight: 1.5,
+							}}
+						>
+							This invitation link is invalid or has expired. Ask the group owner to send a new invitation.
+						</p>
+						<button className="btn btn-ghost btn-lg btn-block" onClick={() => navigate("/")}>
+							Back to home
+						</button>
+					</div>
+				)}
+
 				{state === "idle" && (
 					<div className="invite-card fade-in">
 						<div className="invite-stack">
 							<div className="invite-avatars">
 								<span className="ava ava-1" style={{ width: 56, height: 56, fontSize: 22 }}>
-									M
+									{inviterName[0]?.toUpperCase() ?? "?"}
 								</span>
 								<span className="invite-plus">+</span>
 								<span
@@ -118,7 +180,7 @@ export function AcceptInvitation() {
 								>
 									<span style={{ color: "var(--ink-2)" }}>You're invited to join</span>
 									<br />
-									{inv.group}
+									{groupName}
 								</h1>
 								<p
 									style={{
@@ -129,8 +191,8 @@ export function AcceptInvitation() {
 										lineHeight: 1.5,
 									}}
 								>
-									Accept to join the group and start sharing finances. You'll be added as a{" "}
-									<strong style={{ color: "var(--ink-2)" }}>{inv.role}</strong>.
+									<strong style={{ color: "var(--ink-2)" }}>{inviterName}</strong> has invited you to join their household. You'll be added as a{" "}
+									<strong style={{ color: "var(--ink-2)" }}>Member</strong>.
 								</p>
 							</div>
 						</div>
@@ -145,9 +207,13 @@ export function AcceptInvitation() {
 									</span>
 								}
 							/>
-							<DetailRow icon={<IconUsers size={15} />} label="Group" value={inv.group} />
-							<DetailRow icon={<IconSparkle size={15} />} label="Your role" value={inv.role} />
-							<DetailRow icon={<IconMail size={15} />} label="Expires" value={`In ${inv.expiresIn}`} />
+							<DetailRow icon={<IconUsers size={15} />} label="Group" value={groupName} />
+							<DetailRow icon={<IconSparkle size={15} />} label="Your role" value="Member" />
+							<DetailRow
+								icon={<IconMail size={15} />}
+								label="Sent to"
+								value={preview?.invitee_email_masked ?? "—"}
+							/>
 						</div>
 
 						<div className="invite-perms">
@@ -256,6 +322,55 @@ export function AcceptInvitation() {
 								Log in <IconArrow size={16} />
 							</button>
 						</div>
+					</div>
+				)}
+
+				{state === "wrong-account" && (
+					<div className="invite-card fade-in" style={{ textAlign: "center" }}>
+						<div
+							style={{
+								width: 64,
+								height: 64,
+								borderRadius: 16,
+								background: "oklch(0.95 0.06 30)",
+								display: "inline-flex",
+								alignItems: "center",
+								justifyContent: "center",
+								color: "oklch(0.55 0.18 30)",
+								margin: "0 auto 8px",
+							}}
+						>
+							<IconUser size={28} />
+						</div>
+						<h1
+							style={{
+								fontSize: 26,
+								letterSpacing: "-0.028em",
+								fontWeight: 600,
+								margin: "0 0 10px",
+							}}
+						>
+							Wrong account.
+						</h1>
+						<p
+							style={{
+								fontSize: 14.5,
+								color: "var(--ink-3)",
+								maxWidth: 420,
+								margin: "0 auto 24px",
+								lineHeight: 1.5,
+							}}
+						>
+							This invitation was sent to{" "}
+							<strong style={{ color: "var(--ink-2)" }}>
+								{preview?.invitee_email_masked ?? "a different address"}
+							</strong>
+							. You're currently signed in as a different account. Log out and sign in with the
+							correct email to accept.
+						</p>
+						<button className="btn btn-primary btn-lg btn-block" onClick={doLogout}>
+							Log out and switch accounts <IconArrow size={16} />
+						</button>
 					</div>
 				)}
 

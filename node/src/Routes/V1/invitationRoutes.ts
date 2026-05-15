@@ -10,10 +10,22 @@ import {
 	sendInvitation,
 	acceptInvitation,
 	declineInvitation,
+	getInvitationPreview,
 } from "../../services/invitationService.js";
 import { sendInvitationEmail } from "../../services/emailService.js";
+import { ValidationError } from "../../errors/index.js";
 
 const router = Router();
+
+// Public preview — returns inviter name, group name, masked invitee email (no auth)
+router.get("/preview", async (req, res) => {
+	const { token } = req.query;
+	if (typeof token !== "string" || !token) {
+		throw new ValidationError("token query parameter is required");
+	}
+	const preview = await getInvitationPreview(token);
+	res.status(200).json(preview);
+});
 
 // Send or resend invitation — requires authenticated creator/admin
 router.post(

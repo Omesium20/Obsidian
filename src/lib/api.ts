@@ -72,6 +72,14 @@ export const api = {
 			body: JSON.stringify({ token, new_password }),
 		}),
 
+	getInvitationPreview: (token: string) =>
+		request<{
+			inviter_name: string;
+			group_name: string;
+			invitee_email_masked: string;
+			expires_at: string;
+		}>(`/api/v1/invitations/preview?token=${encodeURIComponent(token)}`),
+
 	acceptInvitation: (token: string) =>
 		request<{ message: string }>("/api/v1/invitations/accept", {
 			method: "POST",
