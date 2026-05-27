@@ -78,6 +78,11 @@ function amountClause(filter: TxFilter): string {
 	return "";
 }
 
+// Returns a paginated page of the requesting user's own transactions.
+// Joins account info for display (name, institution, last four digits).
+// Includes owner identity fields so the response shape matches DashboardGroupTransaction
+// and the frontend can render a consistent table regardless of view mode.
+// `filter` narrows to income-only (amount > 0), spend-only (amount < 0), or all.
 export const getMyTransactionsPaged = async (
 	userId: number,
 	page: number,
@@ -119,6 +124,11 @@ export const getMyTransactionsPaged = async (
 	}
 };
 
+// Returns a paginated page of all transactions visible to a group.
+// Uses account_group_visibility to scope results — only accounts explicitly shared
+// with the group are included, regardless of who owns them.
+// Includes owner identity fields (owner_id, first/last name) so the frontend can
+// display which member each transaction belongs to when showOwner is true.
 export const getGroupTransactionsPaged = async (
 	groupId: number,
 	page: number,
@@ -165,6 +175,10 @@ export const getGroupTransactionsPaged = async (
 	}
 };
 
+// Returns a paginated page of a specific group member's transactions, scoped to
+// accounts that are visible to the group. The double filter (group_id + user_id)
+// ensures a member can only be drilled into if their accounts are actually shared —
+// transactions on unshared accounts are excluded even if they belong to that member.
 export const getMemberTransactionsPaged = async (
 	groupId: number,
 	memberId: number,
@@ -213,6 +227,8 @@ export const getMemberTransactionsPaged = async (
 	}
 };
 
+// Returns basic profile info for the requesting user (id, name, username, email).
+// Used to populate the user section of the dashboard summary response.
 export const getUserDashboardInfo = async (userId: number): Promise<DashboardUser | null> => {
 	try {
 		const res = await pool.query(
@@ -228,6 +244,8 @@ export const getUserDashboardInfo = async (userId: number): Promise<DashboardUse
 	}
 };
 
+// Returns metadata for the group (id, name, last sync time, syncing flag).
+// last_synced_at is normalised to ISO 8601 here so callers don't have to.
 export const getGroupDashboardInfo = async (groupId: number): Promise<DashboardGroup | null> => {
 	try {
 		const res = await pool.query(
@@ -250,6 +268,9 @@ export const getGroupDashboardInfo = async (groupId: number): Promise<DashboardG
 	}
 };
 
+// Returns all active members of a group ordered by join date (oldest first).
+// Only includes memberships where departed_at IS NULL — departed members are excluded.
+// Does not include monthly/category data; the route layer attaches those separately.
 export const getGroupDashboardMembers = async (
 	groupId: number
 ): Promise<Omit<DashboardMember, "monthly" | "categories">[]> => {
@@ -271,6 +292,10 @@ export const getGroupDashboardMembers = async (
 	}
 };
 
+// Returns all active accounts the user has a membership on (owner, joint, or
+// authorized_user). These are the accounts the user personally holds — not
+// scoped to group visibility, so this always reflects the user's full picture
+// regardless of what they've chosen to share with their group.
 export const getMyDashboardAccounts = async (userId: number): Promise<DashboardAccount[]> => {
 	try {
 		const res = await pool.query(
@@ -293,6 +318,11 @@ export const getMyDashboardAccounts = async (userId: number): Promise<DashboardA
 	}
 };
 
+// Returns all active accounts that have been shared with the group via
+// account_group_visibility. Includes owner identity fields so the frontend
+// can show which member each account belongs to in a household view.
+// Uses LEFT JOINs on account_members/users so accounts without an 'owner'
+// membership row still appear rather than being silently dropped.
 export const getGroupDashboardAccounts = async (groupId: number): Promise<DashboardGroupAccount[]> => {
 	try {
 		const res = await pool.query(
@@ -319,6 +349,10 @@ export const getGroupDashboardAccounts = async (groupId: number): Promise<Dashbo
 	}
 };
 
+// Returns the N most recent transactions for the user, ordered newest-first.
+// Used for the "recent activity" preview on the dashboard summary — not paginated.
+// Unlike getMyTransactionsPaged, this does not include owner identity fields
+// since all transactions here trivially belong to the requesting user.
 export const getMyDashboardTransactions = async (
 	userId: number,
 	limit = 30
@@ -344,6 +378,10 @@ export const getMyDashboardTransactions = async (
 	}
 };
 
+// Returns the N most recent transactions across all accounts shared with the group,
+// ordered newest-first. Includes owner identity fields so the frontend can attribute
+// each transaction to a member in a household feed. Used for the summary preview —
+// not paginated (use getGroupTransactionsPaged for the full transaction list).
 export const getGroupDashboardTransactions = async (
 	groupId: number,
 	limit = 50
@@ -374,6 +412,12 @@ export const getGroupDashboardTransactions = async (
 	}
 };
 
+// Returns a rolling 12-month income vs. spending breakdown for a single user,
+// grouped by calendar month and ordered oldest-to-newest for charting.
+// Income = positive amounts (deposits, refunds), spending = absolute value of
+// negative amounts (purchases, withdrawals) — matches the sign convention in
+// the transactions table (positive = inflow, negative = outflow).
+// Months with no transactions are omitted rather than returned as zero rows.
 export const getUserDashboardMonthly = async (userId: number): Promise<DashboardMonthly[]> => {
 	try {
 		const res = await pool.query(
@@ -402,6 +446,9 @@ export const getUserDashboardMonthly = async (userId: number): Promise<Dashboard
 	}
 };
 
+// Same 12-month income vs. spending breakdown as getUserDashboardMonthly, but
+// aggregated across all accounts shared with the group via account_group_visibility.
+// Reflects the household's combined financial picture, not any single member's.
 export const getGroupDashboardMonthly = async (groupId: number): Promise<DashboardMonthly[]> => {
 	try {
 		const res = await pool.query(
@@ -432,6 +479,10 @@ export const getGroupDashboardMonthly = async (groupId: number): Promise<Dashboa
 	}
 };
 
+// Returns the top 10 spending categories for a single user over the last 30 days,
+// ordered by total spend descending. Only outflow transactions (amount < 0) are
+// counted; amounts are stored as absolute values for display. Null categories
+// are bucketed under "Other".
 export const getUserDashboardCategories = async (userId: number): Promise<DashboardCategory[]> => {
 	try {
 		const res = await pool.query(
@@ -456,6 +507,9 @@ export const getUserDashboardCategories = async (userId: number): Promise<Dashbo
 	}
 };
 
+// Same top-10 spending categories breakdown as getUserDashboardCategories, but
+// aggregated across all accounts shared with the group via account_group_visibility.
+// Gives a household-level view of where money is being spent in the last 30 days.
 export const getGroupDashboardCategories = async (groupId: number): Promise<DashboardCategory[]> => {
 	try {
 		const res = await pool.query(

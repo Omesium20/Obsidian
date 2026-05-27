@@ -27,7 +27,9 @@ export const getAllGroups = async (): Promise<Group[]> => {
 };
 
 //Find group by ID
-export const findById = async (groupId: number): Promise<Group | undefined> => {
+export const findGroupById = async (
+	groupId: number
+): Promise<Group | undefined> => {
 	try {
 		const res = await pool.query("SELECT * FROM groups WHERE id = $1", [
 			groupId,
@@ -170,9 +172,7 @@ export const findActiveMembership = async (
 
 // True when the user is in a real shared household (group with >1 active
 // member, or where they are not the creator). Excludes their solo auto-group.
-export const isInSharedHousehold = async (
-	userId: number
-): Promise<boolean> => {
+export const isInSharedHousehold = async (userId: number): Promise<boolean> => {
 	try {
 		const res = await pool.query(
 			`SELECT 1 FROM group_memberships gm
@@ -359,7 +359,9 @@ export const getGroupSyncStatus = async (
 		);
 		const row = res.rows[0];
 		return {
-			last_synced_at: row?.last_synced_at ? new Date(row.last_synced_at) : null,
+			last_synced_at: row?.last_synced_at
+				? new Date(row.last_synced_at)
+				: null,
 			is_syncing: row?.is_syncing ?? false,
 		};
 	} catch (e) {

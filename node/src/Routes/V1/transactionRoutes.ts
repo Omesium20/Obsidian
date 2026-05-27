@@ -17,9 +17,7 @@ router.use(authenticate, authorizeMember);
 
 // Get transaction by ID
 router.get("/:id", validate({ params: idParamSchema }), async (req, res) => {
-	const id = Number(req.params.id);
-
-	const data = await getTransactionById(id);
+	const data = await getTransactionById(req.user!.userId, Number(req.params.id));
 	res.status(200).json({
 		message: "Data received successfully",
 		data,
@@ -37,7 +35,7 @@ router.post("/", validate({ body: createTransactionSchema }), async (req, res) =
 
 // Delete transaction
 router.delete("/", validate({ body: deleteTransactionSchema }), async (req, res) => {
-	const deletedData = await removeTransaction(req.body.id);
+	const deletedData = await removeTransaction(req.user!.userId, req.body.id);
 	res.status(200).json({
 		message: "Transaction deleted",
 		transaction: deletedData,

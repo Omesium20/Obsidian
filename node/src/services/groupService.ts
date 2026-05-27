@@ -1,7 +1,7 @@
 import { pool } from "../config/database.js";
 import {
 	getAllGroups,
-	findById,
+	findGroupById,
 	deleteGroup,
 	getMembership,
 	removeMember,
@@ -24,7 +24,7 @@ export const getGroups = async () => {
 
 // get group by ID
 export const getGroupById = async (id: number) => {
-	const group = await findById(id);
+	const group = await findGroupById(id);
 	if (!group) {
 		throw new NotFoundError("Group", String(id));
 	}
@@ -39,7 +39,7 @@ export const removeGroup = async (
 	requestingUserId: number,
 	requestingRole: string | null
 ) => {
-	const group = await findById(groupId);
+	const group = await findGroupById(groupId);
 	if (!group) {
 		throw new NotFoundError("Group", String(groupId));
 	}
@@ -51,7 +51,11 @@ export const removeGroup = async (
 		);
 	}
 
-	if (membership && membership.role !== "creator" && requestingRole !== "admin") {
+	if (
+		membership &&
+		membership.role !== "creator" &&
+		requestingRole !== "admin"
+	) {
 		throw new AuthorizationError(
 			"Only the group creator can delete this group"
 		);
@@ -102,7 +106,7 @@ export const leaveGroup = async (
 	userId: number,
 	requestingRole: string | null
 ) => {
-	const group = await findById(groupId);
+	const group = await findGroupById(groupId);
 	if (!group) {
 		throw new NotFoundError("Group", String(groupId));
 	}
@@ -167,7 +171,7 @@ export const kickMember = async (
 		);
 	}
 
-	const group = await findById(groupId);
+	const group = await findGroupById(groupId);
 	if (!group) {
 		throw new NotFoundError("Group", String(groupId));
 	}

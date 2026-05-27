@@ -17,12 +17,18 @@ export const getAccounts = async () => {
 	return accounts;
 };
 
-// Get account by ID
-export const getAccountById = async (id: number) => {
-	const account = await findById(id);
+// Get account by ID — only accessible to account members
+export const getAccountById = async (userId: number, accountId: number) => {
+	const account = await findById(accountId);
 	if (!account) {
-		throw new NotFoundError("Account", String(id));
+		throw new NotFoundError("Account", String(accountId));
 	}
+
+	const membership = await getAccountMembership(userId, accountId);
+	if (!membership) {
+		throw new AuthorizationError("No access to this account");
+	}
+
 	return account;
 };
 
@@ -32,7 +38,7 @@ export const createAccount = async (accountData: TablesInsert<"accounts">) => {
 	return account;
 };
 
-// remove an account
+// Deactivate account. Keeps account but is no longer visible and keeps history
 export const removeAccount = async (user_id: number, account_id: number) => {
 	const exists = await findById(account_id);
 	if (!exists) {

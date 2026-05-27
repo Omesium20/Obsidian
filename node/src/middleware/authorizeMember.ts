@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import AuthorizationError from "../errors/authorizationError.js";
-
+//check if member role in token.
+// catches no group membership and allows creator and admin role
 export const authorizeMember = (
 	req: Request,
 	_res: Response,

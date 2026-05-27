@@ -5,17 +5,20 @@ import {
 	deleteTransaction,
 } from "../repository/transactionRepository.js";
 import { TablesInsert } from "../config/types.js";
-import { NotFoundError } from "../errors/index.js";
+import { NotFoundError, AuthorizationError } from "../errors/index.js";
 
 export const getTransactions = async () => {
 	const transactions = await getAllTransactions();
 	return transactions;
 };
 
-export const getTransactionById = async (id: number) => {
+export const getTransactionById = async (userId: number, id: number) => {
 	const transaction = await findById(id);
 	if (!transaction) {
 		throw new NotFoundError("Transaction", String(id));
+	}
+	if (transaction.user_id !== userId) {
+		throw new AuthorizationError("No access to this transaction");
 	}
 	return transaction;
 };
@@ -27,10 +30,13 @@ export const createTransaction = async (
 	return transaction;
 };
 
-export const removeTransaction = async (id: number) => {
-	const transaction = await deleteTransaction(id);
+export const removeTransaction = async (userId: number, id: number) => {
+	const transaction = await findById(id);
 	if (!transaction) {
 		throw new NotFoundError("Transaction", String(id));
 	}
-	return transaction;
+	if (transaction.user_id !== userId) {
+		throw new AuthorizationError("No access to this transaction");
+	}
+	return deleteTransaction(id);
 };

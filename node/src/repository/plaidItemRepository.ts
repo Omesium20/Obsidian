@@ -14,6 +14,22 @@ interface InsertPlaidItemArgs {
 	encryptedAccessToken: EncryptedToken;
 }
 
+interface InsertPlaidAccountArgs {
+	userId: number;
+	groupId: number;
+	accountName: string;
+	accountType: string;
+	plaidType: string | null;
+	plaidSubtype: string | null;
+	institutionName: string | null;
+	lastFour: string | null;
+	plaidAccountId: string;
+	plaidItemId: string;
+	balanceCurrent: number | null;
+	balanceAvailable: number | null;
+	currencyCode: string;
+}
+
 // Insert a new plaid_items row. Accepts an optional client to participate in a
 // caller-managed transaction; falls back to the shared pool otherwise.
 export const insertPlaidItem = async (
@@ -45,52 +61,6 @@ export const insertPlaidItem = async (
 		});
 	}
 };
-
-export const findByUserId = async (userId: number): Promise<PlaidItem[]> => {
-	try {
-		const res = await pool.query(
-			`SELECT * FROM plaid_items WHERE user_id = $1 ORDER BY created_at`,
-			[userId]
-		);
-		return res.rows;
-	} catch (e) {
-		throw new DatabaseError("Failed to fetch plaid_items", {
-			userId,
-			cause: e instanceof Error ? e.message : String(e),
-		});
-	}
-};
-
-export const findById = async (id: number): Promise<PlaidItem | undefined> => {
-	try {
-		const res = await pool.query(
-			`SELECT * FROM plaid_items WHERE id = $1`,
-			[id]
-		);
-		return res.rows[0];
-	} catch (e) {
-		throw new DatabaseError("Failed to fetch plaid_item", {
-			id,
-			cause: e instanceof Error ? e.message : String(e),
-		});
-	}
-};
-
-interface InsertPlaidAccountArgs {
-	userId: number;
-	groupId: number;
-	accountName: string;
-	accountType: string;
-	plaidType: string | null;
-	plaidSubtype: string | null;
-	institutionName: string | null;
-	lastFour: string | null;
-	plaidAccountId: string;
-	plaidItemId: string;
-	balanceCurrent: number | null;
-	balanceAvailable: number | null;
-	currencyCode: string;
-}
 
 export const insertPlaidAccount = async (
 	args: InsertPlaidAccountArgs,
@@ -184,10 +154,13 @@ export const findByGroupMembers = async (
 		);
 		return res.rows;
 	} catch (e) {
-		throw new DatabaseError("Failed to fetch plaid_items for group members", {
-			groupId,
-			cause: e instanceof Error ? e.message : String(e),
-		});
+		throw new DatabaseError(
+			"Failed to fetch plaid_items for group members",
+			{
+				groupId,
+				cause: e instanceof Error ? e.message : String(e),
+			}
+		);
 	}
 };
 

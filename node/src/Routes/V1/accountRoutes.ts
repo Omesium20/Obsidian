@@ -22,8 +22,7 @@ router.use(authenticate, authorizeMember);
 
 // Get account by ID
 router.get("/:id", validate({ params: idParamSchema }), async (req, res) => {
-	const id = Number(req.params.id);
-	const data = await getAccountById(id);
+	const data = await getAccountById(req.user!.userId, Number(req.params.id));
 	res.status(200).json({
 		message: "Data received successfully",
 		data,
@@ -32,7 +31,10 @@ router.get("/:id", validate({ params: idParamSchema }), async (req, res) => {
 
 // Create new account
 router.post("/", validate({ body: createAccountSchema }), async (req, res) => {
-	const newAccount = await createAccount({ ...req.body, user_id: req.user!.userId });
+	const newAccount = await createAccount({
+		...req.body,
+		user_id: req.user!.userId,
+	});
 	res.status(201).json({
 		message: "New Account created",
 		account: newAccount,
@@ -40,13 +42,20 @@ router.post("/", validate({ body: createAccountSchema }), async (req, res) => {
 });
 
 // Delete account
-router.delete("/", validate({ body: deleteAccountSchema }), async (req, res) => {
-	const deletedData = await removeAccount(req.user!.userId, req.body.account_id);
-	res.status(200).json({
-		message: "Account deleted",
-		account: deletedData,
-	});
-});
+router.delete(
+	"/",
+	validate({ body: deleteAccountSchema }),
+	async (req, res) => {
+		const deletedData = await removeAccount(
+			req.user!.userId,
+			req.body.account_id
+		);
+		res.status(200).json({
+			message: "Account deleted",
+			account: deletedData,
+		});
+	}
+);
 
 // Share an account with the caller's current group
 router.post(

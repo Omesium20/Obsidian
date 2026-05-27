@@ -8,7 +8,7 @@ declare module "express-serve-static-core" {
 		newGroupId?: number | null;
 	}
 }
-
+// attaches a fresh token when getting a new permission or joining a group
 export const attachFreshToken = (
 	req: Request,
 	res: Response,

@@ -4,6 +4,7 @@ import { DatabaseError } from "../errors/index.js";
 
 type PasswordResetToken = Tables<"password_reset_tokens">;
 
+//store the password reset token so that it can be used to reset a users password when reached again.
 export const storeResetToken = async (
 	userId: number,
 	tokenHash: string,
@@ -22,6 +23,7 @@ export const storeResetToken = async (
 	}
 };
 
+// search for the stored token to reset the login password.
 export const findValidResetToken = async (
 	tokenHash: string
 ): Promise<PasswordResetToken | undefined> => {
@@ -39,19 +41,8 @@ export const findValidResetToken = async (
 	}
 };
 
-export const markTokenUsed = async (tokenId: number): Promise<void> => {
-	try {
-		await pool.query(
-			`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`,
-			[tokenId]
-		);
-	} catch (e) {
-		throw new DatabaseError("Failed to mark reset token as used", {
-			cause: e instanceof Error ? e.message : String(e),
-		});
-	}
-};
-
+// resets the password and marks the token as being used at the time of being completed
+// done atomically to not cause any bugs.
 export const resetPasswordAndMarkUsed = async (
 	userId: number,
 	passwordHash: string,
@@ -82,6 +73,7 @@ export const resetPasswordAndMarkUsed = async (
 	}
 };
 
+// part of a future cron job that will collect all used and expired tokens and remove them from the db.
 export const purgeExpiredResetTokens = async (): Promise<number> => {
 	try {
 		const res = await pool.query(

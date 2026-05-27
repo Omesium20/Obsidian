@@ -8,6 +8,7 @@ interface ValidationSchemas {
 	query?: z.ZodType;
 }
 
+//checks for request parameters
 export const validate = (schemas: ValidationSchemas) => {
 	return (req: Request, _res: Response, next: NextFunction) => {
 		if (schemas.params) {
@@ -19,7 +20,7 @@ export const validate = (schemas: ValidationSchemas) => {
 			}
 			req.params = result.data as typeof req.params;
 		}
-
+		//checks for request query parameters
 		if (schemas.query) {
 			const result = schemas.query.safeParse(req.query);
 			if (!result.success) {
@@ -29,7 +30,7 @@ export const validate = (schemas: ValidationSchemas) => {
 			}
 			Object.assign(req.query, result.data);
 		}
-
+		//checks for body values
 		if (schemas.body) {
 			const result = schemas.body.safeParse(req.body);
 			if (!result.success) {

@@ -12,7 +12,7 @@ import {
 	purgeExpiredInvitations,
 } from "../repository/invitationRepository.js";
 import {
-	findById as findGroupById,
+	findGroupById,
 	isInSharedHousehold,
 } from "../repository/groupRepository.js";
 import {
@@ -65,7 +65,9 @@ export const sendInvitation = async (
 		// Auto-groups (1-member, self-created) don't count — those dissolve on accept.
 		const inSharedHousehold = await isInSharedHousehold(invitee.id);
 		if (inSharedHousehold) {
-			throw new ConflictError("This user is already a member of a household");
+			throw new ConflictError(
+				"This user is already a member of a household"
+			);
 		}
 	}
 

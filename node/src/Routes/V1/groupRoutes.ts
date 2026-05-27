@@ -22,9 +22,13 @@ const router = Router();
 // All group routes require authentication
 router.use(authenticate);
 
-// Get group by ID (members only)
+// Get group by ID (members only — must match the caller's own group)
 router.get("/:id", authorizeMember, validate({ params: idParamSchema }), async (req, res) => {
 	const id = Number(req.params.id);
+	if (id !== req.user!.groupId) {
+		res.status(403).json({ message: "Access denied" });
+		return;
+	}
 	const data = await getGroupById(id);
 	res.status(200).json({
 		message: "Data received successfully",

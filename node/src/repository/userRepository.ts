@@ -103,30 +103,6 @@ export const newUser = async (
 	}
 };
 
-// Update user password
-export const updatePassword = async (
-	userId: number,
-	passwordHash: string
-): Promise<void> => {
-	try {
-		const res = await pool.query(
-			"UPDATE users SET password_hash = $1 WHERE id = $2",
-			[passwordHash, userId]
-		);
-		if (res.rowCount === 0) {
-			throw new Error("User not found");
-		}
-	} catch (e) {
-		if (e instanceof Error && e.message === "User not found") {
-			throw e;
-		}
-		throw new DatabaseError("Failed to update password", {
-			userId,
-			cause: e instanceof Error ? e.message : String(e),
-		});
-	}
-};
-
 // Delete user profile
 export const deleteProfile = async (
 	userId: number

@@ -2,23 +2,31 @@
 
 import { Configuration, PlaidApi, PlaidEnvironments } from "plaid";
 
-if (!process.env.plaid_client_id) {
-	throw new Error("plaid_client_id environment variable is not defined");
+const isProduction = process.env.PLAID_ENV === "production";
+
+if (!process.env.PLAID_CLIENT_ID) {
+	throw new Error("PLAID_CLIENT_ID environment variable is not defined");
 }
-if (!process.env.plaid_sandbox_secret) {
-	throw new Error("plaid_sandbox_secret environment variable is not defined");
+if (isProduction) {
+	if (!process.env.PLAID_PRODUCTION_SECRET) {
+		throw new Error("PLAID_PRODUCTION_SECRET environment variable is not defined");
+	}
+} else {
+	if (!process.env.PLAID_SANDBOX_SECRET) {
+		throw new Error("PLAID_SANDBOX_SECRET environment variable is not defined");
+	}
 }
 
-// plaid object
 const configuration = new Configuration({
-	basePath: PlaidEnvironments.sandbox,
+	basePath: isProduction ? PlaidEnvironments.production : PlaidEnvironments.sandbox,
 	baseOptions: {
 		headers: {
-			"PLAID-CLIENT-ID": process.env.plaid_client_id,
-			"PLAID-SECRET": process.env.plaid_sandbox_secret,
+			"PLAID-CLIENT-ID": process.env.PLAID_CLIENT_ID,
+			"PLAID-SECRET": isProduction
+				? process.env.PLAID_PRODUCTION_SECRET!
+				: process.env.PLAID_SANDBOX_SECRET!,
 		},
 	},
 });
 
-//new plaid client per call
 export const plaidClient = new PlaidApi(configuration);

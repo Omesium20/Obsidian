@@ -23,7 +23,9 @@
       "Bash(npm run *)",
       "Bash(docker volume rm *)",
       "Bash(npm test *)",
-      "PowerShell(Get-Process *)"
+      "PowerShell(Get-Process *)",
+      "Bash(find \"C:\\\\\\\\Users\\\\\\\\Owner\\\\\\\\Documents\\\\\\\\Projects\\\\\\\\Obsidian Financial\\\\\\\\Obsidian\\\\\\\\node\\\\\\\\src\\\\\\\\services\" -type f -name \"*.ts\" -o -name \"*.js\")",
+      "Bash(find \"C:\\\\\\\\Users\\\\\\\\Owner\\\\\\\\Documents\\\\\\\\Projects\\\\\\\\Obsidian Financial\\\\\\\\Obsidian\\\\\\\\node\\\\\\\\src\\\\\\\\repository\" -type f -name \"*.ts\" -o -name \"*.js\")"
     ]
   }
 }

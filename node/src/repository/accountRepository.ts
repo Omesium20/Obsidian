@@ -12,7 +12,6 @@ import { isPostgresError } from "../utils/postgressError.js";
 // ============================================
 
 type Account = Tables<"accounts">;
-type Transaction = Tables<"transactions">;
 type AccountMember = Tables<"account_members">;
 
 // ============================================
@@ -49,7 +48,6 @@ export const findById = async (
 	}
 };
 
-// creates a new account
 export const newAccount = async (
 	accountData: TablesInsert<"accounts">
 ): Promise<Account> => {
@@ -123,28 +121,6 @@ export const deactivateAccount = async (
 	}
 };
 
-// Get all accounts a user can access (owned, joint and authorized accounts) for listing purposes
-export const getAccessibleAccounts = async (
-	userId: number
-): Promise<Account[]> => {
-	try {
-		const res = await pool.query(
-			`SELECT a.*, am.ownership_type FROM accounts a
-              JOIN account_members am ON a.id = am.account_id
-              WHERE am.user_id = $1
-              AND am.ownership_type IN ('owner', 'joint', 'authorized_user')
-              AND a.is_active = true`,
-			[userId]
-		);
-		return res.rows;
-	} catch (e) {
-		throw new DatabaseError("Failed to fetch accessible accounts", {
-			userId,
-			cause: e instanceof Error ? e.message : String(e),
-		});
-	}
-};
-
 // for checking account membership access. (owner and joint can remove accounts)
 export const getAccountMembership = async (
 	userId: number,
@@ -207,29 +183,6 @@ export const unshareAccountFromGroup = async (
 		throw new DatabaseError("Failed to unshare account from group", {
 			accountId,
 			groupId,
-			cause: e instanceof Error ? e.message : String(e),
-		});
-	}
-};
-
-// Get transactions for accounts user has access to
-export const getAccessibleTransactions = async (
-	userId: number
-): Promise<Transaction[]> => {
-	try {
-		const res = await pool.query(
-			`SELECT t.* FROM transactions t
-              JOIN account_transactions at ON t.id = at.transaction_id
-              JOIN account_members am ON at.account_id = am.account_id
-              WHERE am.user_id = $1
-              AND am.ownership_type IN ('owner', 'joint', 'authorized_user')
-              ORDER BY t.transaction_date DESC`,
-			[userId]
-		);
-		return res.rows;
-	} catch (e) {
-		throw new DatabaseError("Failed to fetch accessible transactions", {
-			userId,
 			cause: e instanceof Error ? e.message : String(e),
 		});
 	}

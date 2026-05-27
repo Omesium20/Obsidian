@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorizeMember } from "../../middleware/authorizeMember.js";
 import { validate } from "../../middleware/validate.js";
+import { AuthenticationError } from "../../errors/index.js";
+import { dashboardTxQuerySchema } from "../../schemas/dashboardSchemas.js";
 import {
 	getUserDashboardInfo,
 	getGroupDashboardInfo,
@@ -23,104 +24,126 @@ import {
 const router = Router();
 router.use(authenticate, authorizeMember);
 
+// Get dashboar information
 router.get("/summary", async (req, res) => {
 	const { userId, groupId } = req.user!;
 
-	const [user, myAccounts, myTxs, myMonthly, myCategories] =
+	// throws Authentication error should not happen but just a formality
+	if (!groupId) {
+		throw new AuthenticationError(
+			"No active group found. Please log in again."
+		);
+	}
+
+	// Phase 1: fetch all personal data + group metadata in one parallel round-trip.
+	// Group info and member list come back here so we can branch on solo vs multi
+	// without a second waterfall.
+	const [user, group, members, myAccounts, myTxs, myMonthly, myCategories] =
 		await Promise.all([
 			getUserDashboardInfo(userId),
+			getGroupDashboardInfo(groupId),
+			getGroupDashboardMembers(groupId),
 			getMyDashboardAccounts(userId),
 			getMyDashboardTransactions(userId, 15),
 			getUserDashboardMonthly(userId),
 			getUserDashboardCategories(userId),
 		]);
 
-	let group = null;
-	let members: Awaited<ReturnType<typeof getGroupDashboardMembers>> = [];
-	let membersWithData: Array<
-		(typeof members)[number] & {
-			monthly: Awaited<ReturnType<typeof getUserDashboardMonthly>>;
-			categories: Awaited<ReturnType<typeof getUserDashboardCategories>>;
-		}
-	> = [];
-	let groupAccounts: Awaited<ReturnType<typeof getGroupDashboardAccounts>> =
-		[];
-	let groupTxs: Awaited<ReturnType<typeof getGroupDashboardTransactions>> =
-		[];
-	let groupMonthly: Awaited<ReturnType<typeof getGroupDashboardMonthly>> = [];
-	let groupCategories: Awaited<
-		ReturnType<typeof getGroupDashboardCategories>
-	> = [];
+	const isSolo = members.length <= 1;
 
-	if (groupId) {
-		const [groupInfo, rawMembers, gAccounts, gTxs, gMonthly, gCategories] =
-			await Promise.all([
-				getGroupDashboardInfo(groupId),
-				getGroupDashboardMembers(groupId),
-				getGroupDashboardAccounts(groupId),
-				getGroupDashboardTransactions(groupId, 15),
-				getGroupDashboardMonthly(groupId),
-				getGroupDashboardCategories(groupId),
-			]);
+	if (isSolo) {
+		// Solo user: every account the user owns is their entire group. Derive all
+		// group slices in-memory from the data we already have — no extra DB queries.
+		const ownerFirst = user?.first_name ?? "";
+		const ownerLast = user?.last_name ?? "";
 
-		group = groupInfo;
-		members = rawMembers;
-		groupAccounts = gAccounts;
-		groupTxs = gTxs;
-		groupMonthly = gMonthly;
-		groupCategories = gCategories;
+		const groupAccounts = myAccounts.map((a) => ({
+			...a,
+			owner_id: userId,
+			owner_first_name: ownerFirst,
+			owner_last_name: ownerLast,
+		}));
 
-		membersWithData = await Promise.all(
-			rawMembers.map(async (m) => {
-				if (m.id === userId) {
-					return {
-						...m,
-						monthly: myMonthly,
-						categories: myCategories,
-					};
-				}
-				const [monthly, categories] = await Promise.all([
-					getUserDashboardMonthly(m.id),
-					getUserDashboardCategories(m.id),
-				]);
-				return { ...m, monthly, categories };
-			})
-		);
-	} else {
-		membersWithData = [];
+		const groupTxs = myTxs.map((t) => ({
+			...t,
+			owner_id: userId,
+			owner_first_name: ownerFirst,
+			owner_last_name: ownerLast,
+		}));
+
+		const membersWithData = members.map((m) => ({
+			...m,
+			monthly: myMonthly,
+			categories: myCategories,
+		}));
+
+		res.status(200).json({
+			user,
+			group,
+			members: membersWithData,
+			my_accounts: myAccounts,
+			group_accounts: groupAccounts,
+			my_transactions: myTxs,
+			group_transactions: groupTxs,
+			my_monthly: myMonthly,
+			group_monthly: myMonthly,
+			my_categories: myCategories,
+			group_categories: myCategories,
+		});
+		return;
 	}
+
+	// Multi-member group: fetch group-aggregated slices while also enriching each
+	// member with their own monthly/category data. The requesting user's data is
+	// already in hand from Phase 1 — reuse it instead of re-fetching.
+	const [gAccounts, gTxs, gMonthly, gCategories, membersWithData] =
+		await Promise.all([
+			getGroupDashboardAccounts(groupId),
+			getGroupDashboardTransactions(groupId, 15),
+			getGroupDashboardMonthly(groupId),
+			getGroupDashboardCategories(groupId),
+			Promise.all(
+				members.map(async (m) => {
+					if (m.id === userId) {
+						return {
+							...m,
+							monthly: myMonthly,
+							categories: myCategories,
+						};
+					}
+					const [monthly, categories] = await Promise.all([
+						getUserDashboardMonthly(m.id),
+						getUserDashboardCategories(m.id),
+					]);
+					return { ...m, monthly, categories };
+				})
+			),
+		]);
 
 	res.status(200).json({
 		user,
 		group,
 		members: membersWithData,
 		my_accounts: myAccounts,
-		group_accounts: groupAccounts,
+		group_accounts: gAccounts,
 		my_transactions: myTxs,
-		group_transactions: groupTxs,
+		group_transactions: gTxs,
 		my_monthly: myMonthly,
-		group_monthly: groupMonthly,
+		group_monthly: gMonthly,
 		my_categories: myCategories,
-		group_categories: groupCategories,
+		group_categories: gCategories,
 	});
 });
 
 const TX_PAGE_LIMIT = 25;
 
-const txQuerySchema = z.object({
-	view: z.string().min(1),
-	page: z.coerce.number().int().min(1).default(1),
-	filter: z.enum(["all", "income", "spend"]).default("all"),
-});
-
+// Get paginated transactions for the dashboard transaction list view.
 router.get(
 	"/transactions",
-	validate({ query: txQuerySchema }),
+	validate({ query: dashboardTxQuerySchema }),
 	async (req, res) => {
 		const { userId, groupId } = req.user!;
-		const { view, page, filter } = req.query as unknown as z.infer<
-			typeof txQuerySchema
-		>;
+		const { view, page, filter } = req.query as unknown as typeof dashboardTxQuerySchema._output;
 
 		if (view === "me") {
 			const result = await getMyTransactionsPaged(
@@ -140,8 +163,9 @@ router.get(
 		}
 
 		if (!groupId) {
-			res.status(400).json({ message: "No active group" });
-			return;
+			throw new AuthenticationError(
+				"No active group found. Please log in again."
+			);
 		}
 
 		if (view === "group") {

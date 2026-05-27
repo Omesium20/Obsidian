@@ -1,4 +1,4 @@
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../../utils/jwt.js";
+import { signAccessToken, signRefreshToken, verifyRefreshToken, AccessTokenPayload } from "../../utils/jwt.js";
 import { hashToken } from "../../utils/hashing.js";
 import {
 	storeRefreshToken,
@@ -23,7 +23,7 @@ export const issueRefreshToken = async (userId: number): Promise<string> => {
 
 export const refreshTokens = async (
 	incomingToken: string
-): Promise<{ accessToken: string; refreshToken: string }> => {
+): Promise<{ accessToken: string; refreshToken: string; payload: AccessTokenPayload }> => {
 	let payload: { userId: number };
 	try {
 		payload = verifyRefreshToken(incomingToken);
@@ -48,13 +48,14 @@ export const refreshTokens = async (
 
 	const membership = await findActiveMembership(payload.userId);
 
-	const accessToken = signAccessToken({
+	const accessPayload: AccessTokenPayload = {
 		userId: payload.userId,
 		groupId: membership?.group_id ?? null,
 		role: membership?.role ?? null,
-	});
+	};
 
+	const accessToken = signAccessToken(accessPayload);
 	const newRefreshToken = await issueRefreshToken(payload.userId);
 
-	return { accessToken, refreshToken: newRefreshToken };
+	return { accessToken, refreshToken: newRefreshToken, payload: accessPayload };
 };

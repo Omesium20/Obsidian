@@ -1,3 +1,4 @@
+// create a superset of Error with AppError
 class AppError extends Error {
 	statusCode: number;
 	errorCode: string;
@@ -5,6 +6,7 @@ class AppError extends Error {
 	details?: Record<string, unknown>;
 	timestamp: Date;
 
+	// automatically initiated anytime an "Error" object is initiated
 	constructor(
 		message: string,
 		statusCode: number,
@@ -12,6 +14,7 @@ class AppError extends Error {
 		operational = true,
 		details?: Record<string, unknown>
 	) {
+		//allows for writes on instance of new object
 		super(message);
 		this.statusCode = statusCode;
 		this.errorCode = errorCode;

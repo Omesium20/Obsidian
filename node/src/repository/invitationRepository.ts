@@ -6,6 +6,10 @@ import { ConflictError } from "../errors/index.js";
 
 type Invitation = Tables<"invitations">;
 
+// Inserts a new invitation row with status 'pending'.
+// Stores the SHA-256 hash of the token (never the raw token) so the plaintext
+// only ever lives in the email sent to the invitee.
+// Called by invitationService.sendInvitation after duplicate-checking and token generation.
 export const createInvitation = async (
 	inviterUserId: number,
 	inviteeEmail: string,
@@ -33,6 +37,10 @@ export const createInvitation = async (
 	}
 };
 
+// Looks up a pending, non-expired invitation by its token hash.
+// Returns undefined (not an error) when the token is unknown, already used,
+// or past its expiry — callers treat all three cases the same way.
+// Called by invitationService.acceptInvitation and invitationService.declineInvitation.
 export const findValidInvitationByToken = async (
 	tokenHash: string
 ): Promise<Invitation | undefined> => {
@@ -50,6 +58,10 @@ export const findValidInvitationByToken = async (
 	}
 };
 
+// Checks whether a pending, non-expired invitation already exists for this
+// email + group combination. Used by invitationService.sendInvitation as a
+// duplicate guard — if one is found, the old invitation is invalidated before
+// a fresh one is created so the invitee only ever has one valid link at a time.
 export const findPendingInvitationForEmail = async (
 	inviteeEmail: string,
 	groupId: number
@@ -68,6 +80,11 @@ export const findPendingInvitationForEmail = async (
 	}
 };
 
+// Updates the status of an invitation and optionally records which user acted on it.
+// Sets accepted_at to NOW() when status is 'accepted', NULL otherwise.
+// invitee_user_id uses COALESCE so passing undefined leaves the existing value intact.
+// Called by invitationService.declineInvitation to mark an invitation as 'declined'.
+// (Accept flow uses acceptInvitationAndJoinGroup instead, which handles this atomically.)
 export const updateInvitationStatus = async (
 	invitationId: number,
 	status: string,
@@ -90,6 +107,20 @@ export const updateInvitationStatus = async (
 	}
 };
 
+// Atomically transitions an accepting user from their solo auto-group into the
+// inviting group. Runs entirely in one transaction with a row-level lock to
+// prevent concurrent accepts racing on the same membership row.
+//
+// Steps:
+//   1. Lock the accepter's current membership row and read their group + member count.
+//   2. Guard: if they're already in a real multi-member household, throw ConflictError.
+//   3. DELETE their 1-member auto-group (CASCADE removes its account_group_visibility rows;
+//      the user's accounts survive but become unshared until explicitly re-shared).
+//   4. INSERT a new 'member' membership in the target group.
+//   5. Increment the target group's member_count.
+//   6. Mark the invitation accepted with accepted_at = NOW().
+//
+// Called by invitationService.acceptInvitation after token validation and email verification.
 export const acceptInvitationAndJoinGroup = async (
 	invitationId: number,
 	groupId: number,
@@ -158,6 +189,11 @@ export const acceptInvitationAndJoinGroup = async (
 	}
 };
 
+// Marks any pending invitation for this email + group as 'invalidated', rendering
+// the old link dead before a new one is issued. Returns the invalidated row so
+// callers can confirm one existed, or undefined if there was nothing to invalidate.
+// Called by invitationService.sendInvitation when a re-invite is sent to an address
+// that already has an outstanding invitation for the same group.
 export const invalidatePendingInvitation = async (
 	inviteeEmail: string,
 	groupId: number
@@ -178,6 +214,12 @@ export const invalidatePendingInvitation = async (
 	}
 };
 
+// Returns display-only metadata for the invitation accept/decline page:
+// the inviter's full name, their group's name, the invitee's email, and the expiry.
+// Joins users + groups so the frontend never has to make separate lookups.
+// The invitee email is returned unmasked here — masking is applied in
+// invitationService.getInvitationPreview before the response is sent.
+// Called by invitationService.getInvitationPreview.
 export const findInvitationPreviewByToken = async (
 	tokenHash: string
 ): Promise<{
@@ -206,6 +248,13 @@ export const findInvitationPreviewByToken = async (
 	}
 };
 
+// Hard-deletes stale invitation rows to keep the table from growing unboundedly.
+// A row is eligible when it is either resolved (accepted/declined/invalidated) or
+// naturally expired, AND at least 7 days have passed since whichever of expires_at
+// or accepted_at is later. The grace period means recently-closed invitations stay
+// queryable for short-term audit purposes before being removed.
+// Re-exported from invitationService and intended to be called on a scheduled basis
+// (e.g. a cron job or admin maintenance endpoint).
 export const purgeExpiredInvitations = async (): Promise<number> => {
 	try {
 		const res = await pool.query(
