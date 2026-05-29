@@ -35,11 +35,15 @@ The test runner is configured with named projects in `vitest.config.ts` — to r
 
 | File | Purpose | Loaded by |
 |---|---|---|
-| `.env.dev` | Backend dev runtime (DB connection, JWT secrets, SMTP, Plaid creds). Hosts use `host.docker.internal` so the dev container can reach Supabase + Mailpit on the host. | `node/src/config/database.ts` (native) and `docker-compose.dev.yaml` `env_file` (containerized). |
+| `.env.dev` | Backend dev runtime (DB connection, JWT secrets, SMTP, Plaid creds). **DB/SMTP host depends on how you run the backend (see note below).** | `node/src/config/database.ts` (native) and `docker-compose.dev.yaml` `env_file` (containerized). |
 | `.env.test` | Test DB connection + JWT secrets. `supabase` var must be a full PostgreSQL URL (`postgresql://postgres:postgres@127.0.0.1:54322/obsidian_test`). `PLAID_ENV=sandbox` plus real Plaid sandbox credentials required for `seedPlaidItem` tests; non-Plaid tests run fine with any non-empty credential values. | `vitest.config.ts` (via dotenv) and the `test` service in `docker-compose.dev.yaml`. |
 | `.env.docker.prod` | Prod container runtime. Read by `docker-compose.prod.yaml`. | Existing prod build only. |
 
 `.gitignore` excludes all `.env*` files.
+
+> **`.env.dev` DB host (native vs. containerized) — handled automatically, do not "fix" it.** The `supabase` connection string and `SMTP_HOST` in `.env.dev`/`.env.test` use **`127.0.0.1`** because that's what native runs (`npm run server`, `npm test`) need — Docker Desktop exposes the Supabase published ports on the Windows host's **loopback** (`127.0.0.1`). The containerized stack can't use `127.0.0.1` (inside a container that's the container itself), so `docker-compose.dev.yaml` **overrides** just those two vars to `host.docker.internal` via `environment:` on the `backend` and `test` services (Compose `environment` takes precedence over `env_file`). The result: one set of `.env` files works for both modes with no manual swapping — leave the files on `127.0.0.1`. (Verified: native `npm run server` and the `backend` container both connect and serve `/register`.)
+>
+> Why the two hosts aren't interchangeable: on the *host*, Docker Desktop resolves `host.docker.internal` via the Windows hosts file to the LAN IP (e.g. `192.168.1.162`), where the published ports are **not** exposed — only `127.0.0.1` is. So pointing a *native* run at `host.docker.internal` makes `database.ts` time out connecting to Postgres, and `server.ts` then `process.exit(1)`s on startup — the server looks like it "crashes on the first request" when it actually never connected. Inside a *container*, `host.docker.internal` resolves instead via the `extra_hosts: host.docker.internal:host-gateway` mapping to the Docker gateway, which Docker Desktop forwards to the host's published ports — so the container path works.
 
 Required Plaid env vars (backend throws at startup if missing):
 
@@ -99,13 +103,13 @@ Schema is managed via Supabase CLI migrations in `supabase/migrations/` (timesta
 
 ### Notable column conventions
 
-- `accounts.account_type` — 5-bucket rollup: `"checking" | "savings" | "credit" | "investment" | "loan"`. Computed by `node/src/services/plaid/subtypeMap.ts` from Plaid's raw `type`/`subtype`. Raw values are also stored verbatim in `accounts.plaid_type` and `accounts.plaid_subtype` for full fidelity.
+- `accounts.type` / `accounts.subtype` — Plaid's native account taxonomy stored verbatim. `type` is one of Plaid's 4 top-level types (`"depository" | "credit" | "loan" | "investment"`), enforced by the `valid_account_type` CHECK. `subtype` is Plaid's subtype (e.g. `"checking"`, `"credit card"`, `"401k"`) and is intentionally free-form (no DB CHECK) so a newly-added Plaid subtype never breaks an insert. `node/src/services/plaid/subtypeMap.ts` is the single source of truth for the taxonomy: it exports `ACCOUNT_TYPES` / `ACCOUNT_SUBTYPES` (consumed by both the Plaid sync path and the Zod `createAccountSchema`) and `sanitizePlaidAccountType()`, which normalizes Plaid's `type`/`subtype` and returns `null` for an unsupported top-level type (e.g. `"other"`) so the caller skips that account.
 - `transactions.amount` — stored as **positive = inflow** (income, deposits, refunds), **negative = outflow** (purchases, withdrawals). Plaid returns the opposite sign (positive = outflow), so the sync service flips the sign at insert and on every `modified` update. Manual transactions entered by the user should use the natural personal-finance sign (no flip).
 - `transactions.pending` — `true` while a transaction is still pending at the bank. Plaid's `modified` array drives the `pending=true → false` transition when a transaction posts. `account_transactions.transaction_type` (`"debit"` / `"credit"`) is derived from the stored (post-flip) amount sign.
 
 ## Testing
 
-Integration tests run against a real local Postgres (Supabase CLI's bundled instance, reached via `host.docker.internal:54322` so the same connection string works from the host and from inside containers).
+Integration tests run against a real local Postgres (Supabase CLI's bundled instance). `.env.test`'s `supabase` URL uses `127.0.0.1:54322` for native runs (`npm test`); the containerized `test` service (`npm run test:docker`) overrides the host to `host.docker.internal` via `environment:` in `docker-compose.dev.yaml`, the same mechanism as the `backend` service. No swapping needed.
 
 `vitest.config.ts` calls `dotenv.config({ path: ".env.test" })` at the top of the file — this must happen before any module imports because `database.ts` creates its pool at import time. The connection string and `NODE_ENV=test` come from `.env.test`.
 
@@ -167,7 +171,7 @@ Files under `node/src/services/plaid/` and `node/src/routes/V1/plaidRoutes.ts` i
    - Exchanges `public_token` for a long-lived `access_token` + `item_id`.
    - Fetches accounts (with balances, names, mask) and institution name.
    - AES-256-GCM encrypts the `access_token` via `node/src/utils/plaidCrypto.ts`.
-   - In one Postgres transaction: inserts `plaid_items`, inserts `accounts` (with `account_type` rollup + raw `plaid_type`/`plaid_subtype`), inserts `account_members` (`ownership_type='owner'`), inserts `account_group_visibility` for the user's current group.
+   - In one Postgres transaction: inserts `plaid_items`, inserts `accounts` (with Plaid's `type`/`subtype` taxonomy, normalized via `sanitizePlaidAccountType`), inserts `account_members` (`ownership_type='owner'`), inserts `account_group_visibility` for the user's current group.
    - Outside that transaction, calls `syncTransactions` to pull the last 30 days of transactions.
 4. Multi-bank: the frontend re-mints a fresh `link_token` (step 1) for each additional institution so Plaid Link can be re-opened. Each successful exchange runs step 3 independently.
 

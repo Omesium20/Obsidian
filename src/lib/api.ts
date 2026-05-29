@@ -23,7 +23,8 @@ export type DashboardSummary = {
 	my_accounts: Array<{
 		id: number;
 		account_name: string;
-		account_type: string;
+		type: string;
+		subtype: string | null;
 		institution_name: string | null;
 		last_four: string | null;
 		balance_current: number | null;
@@ -32,7 +33,8 @@ export type DashboardSummary = {
 	group_accounts: Array<{
 		id: number;
 		account_name: string;
-		account_type: string;
+		type: string;
+		subtype: string | null;
 		institution_name: string | null;
 		last_four: string | null;
 		balance_current: number | null;
@@ -200,7 +202,8 @@ export const api = {
 				id: number;
 				plaid_account_id: string;
 				account_name: string;
-				account_type: string;
+				type: string;
+				subtype: string | null;
 				institution_name: string | null;
 				last_four: string | null;
 				balance_current: number | null;

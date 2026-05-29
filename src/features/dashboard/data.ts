@@ -86,10 +86,10 @@ function cap(s: string): string {
 	return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function accountTone(type: string): string {
+function accountTone(type: string, subtype: string | null): string {
 	switch (type) {
-		case "checking": return "cat-1";
-		case "savings": return "cat-2";
+		case "depository":
+			return subtype === "savings" ? "cat-2" : "cat-1";
 		case "investment": return "cat-3";
 		case "credit": return "cat-5";
 		case "loan": return "cat-6";
@@ -188,20 +188,20 @@ export function buildAccountsForView(summary: DashboardSummary, viewKey: string)
 	if (viewKey === "group") {
 		return summary.group_accounts.map((a) => ({
 			n: a.account_name,
-			t: `${cap(a.account_type)} · ${a.owner_first_name}`,
-			bal: effectiveBal(a.balance_current, a.account_type),
+			t: `${cap(a.subtype ?? a.type)} · ${a.owner_first_name}`,
+			bal: effectiveBal(a.balance_current, a.type),
 			mask: a.last_four ? `••${a.last_four}` : "—",
-			tone: accountTone(a.account_type),
+			tone: accountTone(a.type, a.subtype),
 		}));
 	}
 
 	if (viewKey === "me") {
 		return summary.my_accounts.map((a) => ({
 			n: a.account_name,
-			t: cap(a.account_type),
-			bal: effectiveBal(a.balance_current, a.account_type),
+			t: cap(a.subtype ?? a.type),
+			bal: effectiveBal(a.balance_current, a.type),
 			mask: a.last_four ? `••${a.last_four}` : "—",
-			tone: accountTone(a.account_type),
+			tone: accountTone(a.type, a.subtype),
 		}));
 	}
 
@@ -210,10 +210,10 @@ export function buildAccountsForView(summary: DashboardSummary, viewKey: string)
 		.filter((a) => a.owner_id === memberId)
 		.map((a) => ({
 			n: a.account_name,
-			t: cap(a.account_type),
-			bal: effectiveBal(a.balance_current, a.account_type),
+			t: cap(a.subtype ?? a.type),
+			bal: effectiveBal(a.balance_current, a.type),
 			mask: a.last_four ? `••${a.last_four}` : "—",
-			tone: accountTone(a.account_type),
+			tone: accountTone(a.type, a.subtype),
 		}));
 }
 

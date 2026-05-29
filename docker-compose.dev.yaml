@@ -7,6 +7,15 @@ services:
       dockerfile: Dockerfile.dev
     container_name: obsidian-backend-dev
     env_file: .env.dev
+    # .env.dev points the DB/SMTP host at 127.0.0.1 for native `npm run server`
+    # (the Supabase CLI binds its ports to loopback only). Inside this container
+    # 127.0.0.1 is the container itself, so override just the two host-specific
+    # vars to reach the host's published ports via the extra_hosts mapping below.
+    # `environment` takes precedence over `env_file`, so the same .env.dev works
+    # for both native and containerized runs with no manual swapping.
+    environment:
+      supabase: "postgresql://postgres:postgres@host.docker.internal:54322/postgres"
+      SMTP_HOST: "host.docker.internal"
     ports:
       - "3000:3000"
     volumes:
@@ -63,6 +72,10 @@ services:
       dockerfile: Dockerfile.dev
     container_name: obsidian-test
     env_file: .env.test
+    # Same host override as the backend service: .env.test uses 127.0.0.1 for
+    # native `npm test`; reach the host's published port from the container here.
+    environment:
+      supabase: "postgresql://postgres:postgres@host.docker.internal:54322/obsidian_test"
     volumes:
       - ./node:/usr/local/app/node
       - ./supabase:/usr/local/app/supabase

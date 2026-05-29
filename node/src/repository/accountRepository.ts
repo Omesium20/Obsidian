@@ -53,13 +53,14 @@ export const newAccount = async (
 ): Promise<Account> => {
 	try {
 		const res = await pool.query(
-			`INSERT INTO accounts (user_id, account_name, account_type, balance_current, balance_available, currency_code, institution_name, last_four, plaid_account_id, plaid_item_id, is_active)
-			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			`INSERT INTO accounts (user_id, account_name, type, subtype, balance_current, balance_available, currency_code, institution_name, last_four, plaid_account_id, plaid_item_id, is_active)
+			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			RETURNING *`,
 			[
 				accountData.user_id,
 				accountData.account_name,
-				accountData.account_type,
+				accountData.type,
+				accountData.subtype,
 				accountData.balance_current,
 				accountData.balance_available,
 				accountData.currency_code,

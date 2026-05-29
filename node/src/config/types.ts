@@ -154,7 +154,8 @@ export type Database = {
       accounts: {
         Row: {
           account_name: string
-          account_type: string | null
+          type: string | null
+          subtype: string | null
           balance_available: number | null
           balance_current: number | null
           created_at: string | null
@@ -165,14 +166,13 @@ export type Database = {
           last_four: string | null
           plaid_account_id: string | null
           plaid_item_id: string | null
-          plaid_subtype: string | null
-          plaid_type: string | null
           updated_at: string | null
           user_id: number
         }
         Insert: {
           account_name: string
-          account_type?: string | null
+          type?: string | null
+          subtype?: string | null
           balance_available?: number | null
           balance_current?: number | null
           created_at?: string | null
@@ -183,14 +183,13 @@ export type Database = {
           last_four?: string | null
           plaid_account_id?: string | null
           plaid_item_id?: string | null
-          plaid_subtype?: string | null
-          plaid_type?: string | null
           updated_at?: string | null
           user_id: number
         }
         Update: {
           account_name?: string
-          account_type?: string | null
+          type?: string | null
+          subtype?: string | null
           balance_available?: number | null
           balance_current?: number | null
           created_at?: string | null
@@ -201,8 +200,6 @@ export type Database = {
           last_four?: string | null
           plaid_account_id?: string | null
           plaid_item_id?: string | null
-          plaid_subtype?: string | null
-          plaid_type?: string | null
           updated_at?: string | null
           user_id?: number
         }

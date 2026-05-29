@@ -26,6 +26,9 @@ export default defineConfig({
 				test: {
 					name: "accounts",
 					testTimeout: 60000,
+					// seedPlaidItem makes real sandbox calls (~8–10s + retries)
+					// inside beforeAll; the default 10s hookTimeout is too short.
+					hookTimeout: 60000,
 					include: [
 						"node/src/tests/repository/accountRepository.test.ts",
 					],

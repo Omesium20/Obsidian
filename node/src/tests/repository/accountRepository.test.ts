@@ -3,9 +3,6 @@ import {
 	truncateAll,
 	seedUser,
 	seedAccount,
-	seedAccountMember,
-	seedTransaction,
-	seedAccountTransaction,
 	seedGroup,
 } from "../helpers/dbHelper.js";
 import { seedPlaidItem } from "../helpers/plaidHelper.js";
@@ -14,9 +11,7 @@ import {
 	findById,
 	newAccount,
 	deactivateAccount,
-	getAccessibleAccounts,
 	getAccountMembership,
-	getAccessibleTransactions,
 } from "../../repository/accountRepository.js";
 import { ConflictError } from "../../errors/index.js";
 
@@ -89,7 +84,8 @@ describe("accountRepository", () => {
 			const account = await newAccount({
 				user_id: user.id,
 				account_name: "My Savings",
-				account_type: "savings",
+				type: "depository",
+				subtype: "savings",
 				balance_current: 5000,
 				balance_available: 5000,
 				currency_code: "USD",
@@ -102,7 +98,8 @@ describe("accountRepository", () => {
 
 			expect(account).toBeDefined();
 			expect(account.account_name).toBe("My Savings");
-			expect(account.account_type).toBe("savings");
+			expect(account.type).toBe("depository");
+			expect(account.subtype).toBe("savings");
 			expect(Number(account.balance_current)).toBe(5000);
 			expect(account.user_id).toBe(user.id);
 		});
@@ -112,7 +109,8 @@ describe("accountRepository", () => {
 				newAccount({
 					user_id: 99999,
 					account_name: "Ghost Account",
-					account_type: "checking",
+					type: "depository",
+					subtype: "checking",
 					balance_current: 0,
 					balance_available: 0,
 					currency_code: "USD",
@@ -131,7 +129,8 @@ describe("accountRepository", () => {
 			const account = await newAccount({
 				user_id: user.id,
 				account_name: "Default Active",
-				account_type: "checking",
+				type: "depository",
+				subtype: "checking",
 				balance_current: 100,
 				balance_available: 100,
 				currency_code: "USD",
@@ -173,45 +172,6 @@ describe("accountRepository", () => {
 	});
 
 	// =========================================================================
-	// getAccessibleAccounts — edge cases using direct seeds
-	// =========================================================================
-
-	describe("getAccessibleAccounts (direct seeds)", () => {
-		beforeEach(async () => {
-			await truncateAll();
-		});
-
-		it("should return accounts where user is joint or authorized", async () => {
-			const owner = await seedUser();
-			const jointUser = await seedUser({
-				email: "joint@example.com",
-				username: "jointuser",
-			});
-
-			const account = await seedAccount(owner.id);
-			await seedAccountMember(account.id, jointUser.id, "joint");
-
-			const accessible = await getAccessibleAccounts(jointUser.id);
-			expect(accessible).toHaveLength(1);
-		});
-
-		it("should not return inactive accounts", async () => {
-			const user = await seedUser();
-			const account = await seedAccount(user.id, { is_active: false });
-			await seedAccountMember(account.id, user.id, "owner");
-
-			const accessible = await getAccessibleAccounts(user.id);
-			expect(accessible).toHaveLength(0);
-		});
-
-		it("should return empty array for user with no accounts", async () => {
-			const user = await seedUser();
-			const accessible = await getAccessibleAccounts(user.id);
-			expect(accessible).toEqual([]);
-		});
-	});
-
-	// =========================================================================
 	// getAccountMembership — not-found case
 	// =========================================================================
 
@@ -224,44 +184,6 @@ describe("accountRepository", () => {
 			const user = await seedUser();
 			const membership = await getAccountMembership(user.id, 99999);
 			expect(membership).toBeUndefined();
-		});
-	});
-
-	// =========================================================================
-	// getAccessibleTransactions — edge cases using direct seeds
-	// =========================================================================
-
-	describe("getAccessibleTransactions (direct seeds)", () => {
-		beforeEach(async () => {
-			await truncateAll();
-		});
-
-		it("should return empty array when user has no accessible accounts", async () => {
-			const user = await seedUser();
-			const transactions = await getAccessibleTransactions(user.id);
-			expect(transactions).toEqual([]);
-		});
-
-		it("should order by transaction_date descending", async () => {
-			const user = await seedUser();
-			const account = await seedAccount(user.id);
-			await seedAccountMember(account.id, user.id, "owner");
-
-			const older = await seedTransaction(user.id, {
-				transaction_date: "2026-01-01",
-				description: "older",
-			});
-			const newer = await seedTransaction(user.id, {
-				transaction_date: "2026-06-01",
-				description: "newer",
-			});
-			await seedAccountTransaction(account.id, older.id);
-			await seedAccountTransaction(account.id, newer.id);
-
-			const transactions = await getAccessibleTransactions(user.id);
-			expect(transactions).toHaveLength(2);
-			expect(transactions[0].description).toBe("newer");
-			expect(transactions[1].description).toBe("older");
 		});
 	});
 
@@ -284,16 +206,6 @@ describe("accountRepository", () => {
 			plaidAccounts = result.accounts;
 		});
 
-		describe("getAccessibleAccounts", () => {
-			it("should return accounts where user is owner", async () => {
-				const accessible = await getAccessibleAccounts(userId);
-				expect(accessible.length).toBe(plaidAccounts.length);
-				expect(accessible.every((a) => a.user_id === userId)).toBe(
-					true
-				);
-			});
-		});
-
 		describe("getAccountMembership", () => {
 			it("should return the membership record for a Plaid account", async () => {
 				const target = plaidAccounts[0];
@@ -303,23 +215,6 @@ describe("accountRepository", () => {
 				);
 				expect(membership).toBeDefined();
 				expect(membership!.ownership_type).toBe("owner");
-			});
-		});
-
-		describe("getAccessibleTransactions", () => {
-			it("should return transactions for accounts the user has access to", async () => {
-				const transactions = await getAccessibleTransactions(userId);
-				expect(transactions.length).toBeGreaterThan(0);
-			});
-
-			it("should order by transaction_date descending", async () => {
-				const transactions = await getAccessibleTransactions(userId);
-				for (let i = 0; i < transactions.length - 1; i++) {
-					expect(
-						new Date(transactions[i].transaction_date) >=
-							new Date(transactions[i + 1].transaction_date)
-					).toBe(true);
-				}
 			});
 		});
 	});

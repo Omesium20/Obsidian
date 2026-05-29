@@ -9,7 +9,8 @@ type Step = 1 | 2;
 interface LinkedAccount {
 	id: number;
 	account_name: string;
-	account_type: string;
+	type: string;
+	subtype: string | null;
 	institution_name: string | null;
 	last_four: string | null;
 }
@@ -134,7 +135,8 @@ function PlaidStep({
 					accounts: res.accounts.map((a) => ({
 						id: a.id,
 						account_name: a.account_name,
-						account_type: a.account_type,
+						type: a.type,
+						subtype: a.subtype,
 						institution_name: a.institution_name,
 						last_four: a.last_four,
 					})),
@@ -195,7 +197,7 @@ function PlaidStep({
 								{inst.accounts.map((a) => (
 									<li key={a.id} className="ob-linked-account">
 										<span className="ob-linked-an">{a.account_name}</span>
-										<span className="ob-linked-at">{a.account_type}</span>
+										<span className="ob-linked-at">{a.subtype ?? a.type}</span>
 										{a.last_four ? (
 											<span className="ob-linked-am">····{a.last_four}</span>
 										) : null}

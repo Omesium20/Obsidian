@@ -3,7 +3,7 @@ import { pool } from "../../config/database.js";
 import { plaidClient } from "../../config/plaid.js";
 import { encryptToken } from "../../utils/plaidCrypto.js";
 import { insertPlaidItem, insertPlaidAccount } from "../../repository/plaidItemRepository.js";
-import { mapSubtype } from "./subtypeMap.js";
+import { sanitizePlaidAccountType } from "./subtypeMap.js";
 import { syncTransactions } from "./transactionsSyncService.js";
 import { ExternalServiceError, DatabaseError } from "../../errors/index.js";
 
@@ -11,9 +11,8 @@ export interface LinkedAccount {
 	id: number;
 	plaid_account_id: string;
 	account_name: string;
-	account_type: string;
-	plaid_type: string | null;
-	plaid_subtype: string | null;
+	type: string;
+	subtype: string | null;
 	institution_name: string | null;
 	last_four: string | null;
 	balance_current: number | null;
@@ -97,8 +96,8 @@ export const exchangePublicToken = async (
 		plaidItemRowId = plaidItem.id;
 
 		for (const acct of plaidAccounts) {
-			const accountType = mapSubtype(acct.type, acct.subtype);
-			if (!accountType) {
+			const sanitized = sanitizePlaidAccountType(acct.type, acct.subtype);
+			if (!sanitized) {
 				console.warn("[plaid] skipping unmapped account", {
 					plaid_account_id: acct.account_id,
 					type: acct.type,
@@ -107,16 +106,14 @@ export const exchangePublicToken = async (
 				continue;
 			}
 
-			const plaidType = acct.type ?? null;
-			const plaidSubtype = acct.subtype ?? null;
+			const { type, subtype } = sanitized;
 
 			const accountRowId = await insertPlaidAccount({
 				userId,
 				groupId,
 				accountName: acct.name,
-				accountType,
-				plaidType,
-				plaidSubtype,
+				type,
+				subtype,
 				institutionName,
 				lastFour: acct.mask ?? null,
 				plaidAccountId: acct.account_id,
@@ -130,9 +127,8 @@ export const exchangePublicToken = async (
 				id: accountRowId,
 				plaid_account_id: acct.account_id,
 				account_name: acct.name,
-				account_type: accountType,
-				plaid_type: plaidType,
-				plaid_subtype: plaidSubtype,
+				type,
+				subtype,
 				institution_name: institutionName,
 				last_four: acct.mask ?? null,
 				balance_current: acct.balances?.current ?? null,

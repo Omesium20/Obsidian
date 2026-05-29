@@ -39,7 +39,8 @@ export interface DashboardMember {
 export interface DashboardAccount {
 	id: number;
 	account_name: string;
-	account_type: string;
+	type: string;
+	subtype: string | null;
 	institution_name: string | null;
 	last_four: string | null;
 	balance_current: number | null;
@@ -299,7 +300,7 @@ export const getGroupDashboardMembers = async (
 export const getMyDashboardAccounts = async (userId: number): Promise<DashboardAccount[]> => {
 	try {
 		const res = await pool.query(
-			`SELECT a.id, a.account_name, a.account_type, a.institution_name,
+			`SELECT a.id, a.account_name, a.type, a.subtype, a.institution_name,
 			        a.last_four, a.balance_current, a.balance_available
 			 FROM accounts a
 			 JOIN account_members am ON a.id = am.account_id
@@ -326,7 +327,7 @@ export const getMyDashboardAccounts = async (userId: number): Promise<DashboardA
 export const getGroupDashboardAccounts = async (groupId: number): Promise<DashboardGroupAccount[]> => {
 	try {
 		const res = await pool.query(
-			`SELECT a.id, a.account_name, a.account_type, a.institution_name,
+			`SELECT a.id, a.account_name, a.type, a.subtype, a.institution_name,
 			        a.last_four, a.balance_current, a.balance_available,
 			        am.user_id AS owner_id,
 			        u.first_name AS owner_first_name,

@@ -3,6 +3,7 @@ import { pool } from "../config/database.js";
 import { Tables } from "../config/types.js";
 import { DatabaseError } from "../errors/index.js";
 import { decryptToken, EncryptedToken } from "../utils/plaidCrypto.js";
+import { AccountType } from "../services/plaid/subtypeMap.js";
 
 type PlaidItem = Tables<"plaid_items">;
 
@@ -18,9 +19,8 @@ interface InsertPlaidAccountArgs {
 	userId: number;
 	groupId: number;
 	accountName: string;
-	accountType: string;
-	plaidType: string | null;
-	plaidSubtype: string | null;
+	type: AccountType;
+	subtype: string | null;
 	institutionName: string | null;
 	lastFour: string | null;
 	plaidAccountId: string;
@@ -73,17 +73,16 @@ export const insertPlaidAccount = async (
 
 		const accountRes = await c.query(
 			`INSERT INTO accounts
-				(user_id, account_name, account_type, plaid_type, plaid_subtype,
+				(user_id, account_name, type, subtype,
 				 institution_name, last_four, plaid_account_id, plaid_item_id,
 				 balance_current, balance_available, currency_code, is_active)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
 			 RETURNING id`,
 			[
 				args.userId,
 				args.accountName,
-				args.accountType,
-				args.plaidType,
-				args.plaidSubtype,
+				args.type,
+				args.subtype,
 				args.institutionName,
 				args.lastFour,
 				args.plaidAccountId,
@@ -134,6 +133,21 @@ export const updateCursor = async (
 	} catch (e) {
 		throw new DatabaseError("Failed to update transactions_cursor", {
 			id,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+export const findByUserId = async (userId: number): Promise<PlaidItem[]> => {
+	try {
+		const res = await pool.query(
+			`SELECT * FROM plaid_items WHERE user_id = $1 ORDER BY created_at`,
+			[userId]
+		);
+		return res.rows;
+	} catch (e) {
+		throw new DatabaseError("Failed to fetch plaid_items", {
+			userId,
 			cause: e instanceof Error ? e.message : String(e),
 		});
 	}

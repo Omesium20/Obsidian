@@ -60,7 +60,8 @@ export async function seedAccount(
 ) {
 	const defaults = {
 		account_name: "Test Checking",
-		account_type: "checking",
+		type: "depository",
+		subtype: "checking",
 		balance_current: 1000.0,
 		balance_available: 950.0,
 		currency_code: "USD",
@@ -71,13 +72,14 @@ export async function seedAccount(
 	const data = { ...defaults, ...overrides };
 
 	const res = await pool.query(
-		`INSERT INTO accounts (user_id, account_name, account_type, balance_current, balance_available, currency_code, institution_name, last_four, is_active)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO accounts (user_id, account_name, type, subtype, balance_current, balance_available, currency_code, institution_name, last_four, is_active)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 RETURNING *`,
 		[
 			userId,
 			data.account_name,
-			data.account_type,
+			data.type,
+			data.subtype,
 			data.balance_current,
 			data.balance_available,
 			data.currency_code,
