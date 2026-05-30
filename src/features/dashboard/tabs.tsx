@@ -1,10 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { buildTransactions, fmt, groupAccountsByType, RANGES, type AccountDisplay, type AccountTypeGroup, type RangeKey, type Slice, type Transaction, type View, type ViewKey } from "./data";
 import { BarChart, DualLineChart, PieChart } from "./charts";
 import { ModalShell } from "./modals";
-import { api, ApiError, type TxPageFilter } from "../../lib/api";
+import { AddAccountModal } from "./AddAccountModal";
+import { AddTransactionModal } from "./AddTransactionModal";
+import { IconBank, IconCard, IconLoan, IconInvest } from "../../components/icons";
+import { api, ApiError, type DashboardSummary, type TxPageFilter } from "../../lib/api";
 
 type ChartKind = "line" | "pie" | "bar";
+
+// Icon per Plaid top-level account type, shown beside each account-type group so
+// the category reads at a glance. Falls back to the bank icon for any unmapped type.
+const TYPE_ICONS: Record<string, (p: { size?: number }) => ReactElement> = {
+	depository: IconBank,
+	credit: IconCard,
+	loan: IconLoan,
+	investment: IconInvest,
+};
 
 type Accent = "pos" | "neg" | "warn" | null;
 
@@ -292,7 +304,16 @@ function TxRow({ t }: { t: Transaction }) {
 	);
 }
 
-export function TabTransactions({ view }: { v: View; view: ViewKey }) {
+export function TabTransactions({
+	view,
+	accounts,
+	onTransactionAdded,
+}: {
+	v: View;
+	view: ViewKey;
+	accounts: DashboardSummary["my_accounts"];
+	onTransactionAdded: () => void;
+}) {
 	const [filter, setFilter] = useState<TxPageFilter>("all");
 	const [page, setPage] = useState(1);
 	const [txs, setTxs] = useState<Transaction[]>([]);
@@ -300,6 +321,9 @@ export function TabTransactions({ view }: { v: View; view: ViewKey }) {
 	const [pages, setPages] = useState(1);
 	const [loading, setLoading] = useState(true);
 	const [fetchError, setFetchError] = useState<string | null>(null);
+	const [addingTx, setAddingTx] = useState(false);
+	// Bumped after a manual add to re-run the fetch effect for the current page.
+	const [reloadKey, setReloadKey] = useState(0);
 	const prevViewRef = useRef(view);
 
 	useEffect(() => {
@@ -327,7 +351,7 @@ export function TabTransactions({ view }: { v: View; view: ViewKey }) {
 			.finally(() => { if (!cancelled) setLoading(false); });
 
 		return () => { cancelled = true; };
-	}, [view, page, filter]);
+	}, [view, page, filter, reloadKey]);
 
 	const handleFilter = (f: TxPageFilter) => {
 		setFilter(f);
@@ -393,6 +417,12 @@ export function TabTransactions({ view }: { v: View; view: ViewKey }) {
 								Spending
 							</button>
 						</div>
+						<button
+							className="btn btn-sm btn-brand"
+							onClick={() => setAddingTx(true)}
+						>
+							+ Add transaction
+						</button>
 					</div>
 				</div>
 
@@ -435,6 +465,17 @@ export function TabTransactions({ view }: { v: View; view: ViewKey }) {
 					</div>
 				) : null}
 			</section>
+
+			{addingTx ? (
+				<AddTransactionModal
+					accounts={accounts}
+					onClose={() => setAddingTx(false)}
+					onAdded={() => {
+						setReloadKey((k) => k + 1);
+						onTransactionAdded();
+					}}
+				/>
+			) : null}
 		</div>
 	);
 }
@@ -502,6 +543,7 @@ function AccountGroup({
 	const [open, setOpen] = useState(defaultOpen);
 	const panelId = `acct-group-${group.type}`;
 	const showSubLabels = group.subgroups.length > 1;
+	const TypeIcon = TYPE_ICONS[group.type] ?? IconBank;
 
 	return (
 		<div className={`acct-group ${open ? "open" : ""}`}>
@@ -512,7 +554,9 @@ function AccountGroup({
 				aria-controls={panelId}
 				onClick={() => setOpen((o) => !o)}
 			>
-				<span className="acct-group-mark" style={{ background: `var(--${group.tone})` }} />
+				<span className="acct-group-mark" style={{ color: `var(--${group.tone})` }}>
+					<TypeIcon size={18} />
+				</span>
 				<div className="acct-group-title">
 					<span className="acct-group-label">{group.label}</span>
 					<span className="acct-group-count">
@@ -682,10 +726,21 @@ function AccountTransactionsModal({
 	);
 }
 
-export function TabAccounts({ v, view, accounts }: { v: View; view: ViewKey; accounts: AccountDisplay[] }) {
+export function TabAccounts({
+	v,
+	view,
+	accounts,
+	onAccountAdded,
+}: {
+	v: View;
+	view: ViewKey;
+	accounts: AccountDisplay[];
+	onAccountAdded: () => void;
+}) {
 	const accts = accounts;
 	const groups = useMemo(() => groupAccountsByType(accts), [accts]);
 	const [selected, setSelected] = useState<AccountDisplay | null>(null);
+	const [addingAccount, setAddingAccount] = useState(false);
 
 	const total = accts.reduce((a, b) => a + b.bal, 0);
 	const cash = accts.filter((a) => a.type === "depository").reduce((s, a) => s + a.bal, 0);
@@ -752,7 +807,12 @@ export function TabAccounts({ v, view, accounts }: { v: View; view: ViewKey; acc
 						>
 							{isSyncing ? "Syncing…" : "Sync now"}
 						</button>
-						<button className="btn btn-sm btn-brand">+ Add account</button>
+						<button
+							className="btn btn-sm btn-brand"
+							onClick={() => setAddingAccount(true)}
+						>
+							+ Add account
+						</button>
 					</div>
 				</div>
 				{groups.length === 0 ? (
@@ -775,6 +835,13 @@ export function TabAccounts({ v, view, accounts }: { v: View; view: ViewKey; acc
 				<AccountTransactionsModal
 					account={selected}
 					onClose={() => setSelected(null)}
+				/>
+			) : null}
+
+			{addingAccount ? (
+				<AddAccountModal
+					onClose={() => setAddingAccount(false)}
+					onAdded={onAccountAdded}
 				/>
 			) : null}
 		</div>

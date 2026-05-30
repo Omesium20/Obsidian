@@ -136,6 +136,59 @@ export const IconUsers = (p: IconProps) => (
 	/>
 );
 
+// Account-type icons — used next to account-type groups on the Accounts tab to
+// signal what each group is at a glance (cash, credit, loans, investments).
+export const IconBank = (p: IconProps) => (
+	<Icon
+		{...p}
+		d={
+			<>
+				<path d="M3 9.5l9-5.5 9 5.5" />
+				<path d="M5 10v7M9.5 10v7M14.5 10v7M19 10v7" />
+				<path d="M3.5 20.5h17" />
+			</>
+		}
+	/>
+);
+
+export const IconCard = (p: IconProps) => (
+	<Icon
+		{...p}
+		d={
+			<>
+				<rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+				<path d="M2.5 9.5h19" />
+				<path d="M6 14.5h4" />
+			</>
+		}
+	/>
+);
+
+export const IconLoan = (p: IconProps) => (
+	<Icon
+		{...p}
+		d={
+			<>
+				<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+				<path d="M14 3v5h5" />
+				<path d="M9 13h6M9 16.5h4" />
+			</>
+		}
+	/>
+);
+
+export const IconInvest = (p: IconProps) => (
+	<Icon
+		{...p}
+		d={
+			<>
+				<path d="M3 16.5l5.5-5.5 4 4 8-8" />
+				<path d="M16 7h4.5v4.5" />
+			</>
+		}
+	/>
+);
+
 export const IconSparkle = (p: IconProps) => (
 	<Icon
 		{...p}

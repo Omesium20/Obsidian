@@ -90,6 +90,73 @@ export const newTransaction = async (
 	}
 };
 
+// Create a manually-entered transaction and link it to an account in one
+// transaction. Mirrors the Plaid sync ingestion path (transactionsSyncService):
+// it inserts the transactions row, then an account_transactions row so the
+// transaction is visible on the dashboard (getTransactionsWithAccounts and the
+// dashboard queries all JOIN through account_transactions — a transactions row
+// with no link would never appear). entry_method is forced to 'manual', and
+// transaction_type is derived from the stored amount sign (negative = debit /
+// outflow, positive = credit / inflow), matching the sign convention in the
+// transactions table (positive = inflow, negative = outflow). Manual entries use
+// the natural personal-finance sign — no flip, unlike the Plaid path.
+export const createManualTransaction = async (
+	transactionData: TablesInsert<"transactions">,
+	accountId: number
+): Promise<Transaction> => {
+	const client = await pool.connect();
+	try {
+		await client.query("BEGIN");
+
+		const txRes = await client.query(
+			`INSERT INTO transactions
+				(user_id, transaction_date, amount, description, category, merchant_name, entry_method)
+			VALUES ($1, $2, $3, $4, $5, $6, 'manual')
+			RETURNING *`,
+			[
+				transactionData.user_id,
+				transactionData.transaction_date,
+				transactionData.amount,
+				transactionData.description,
+				transactionData.category,
+				transactionData.merchant_name,
+			]
+		);
+		const transaction: Transaction = txRes.rows[0];
+
+		const transactionType = Number(transaction.amount) < 0 ? "debit" : "credit";
+		await client.query(
+			`INSERT INTO account_transactions (account_id, transaction_id, transaction_type)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (account_id, transaction_id) DO NOTHING`,
+			[accountId, transaction.id, transactionType]
+		);
+
+		await client.query("COMMIT");
+		return transaction;
+	} catch (e) {
+		await client.query("ROLLBACK");
+		if (isPostgresError(e)) {
+			if (e.code === "23502") {
+				throw new ValidationError("Required field is missing", {
+					column: e.column,
+				});
+			}
+			if (e.code === "23503") {
+				throw new ConflictError("Referenced user or account does not exist", {
+					constraint: e.constraint,
+					detail: e.details,
+				});
+			}
+		}
+		throw new DatabaseError("Failed to create transaction", {
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	} finally {
+		client.release();
+	}
+};
+
 // Delete Transactions
 export const deleteTransaction = async (
 	transactionId: number

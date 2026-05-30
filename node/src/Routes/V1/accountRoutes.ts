@@ -52,10 +52,13 @@ router.get(
 
 // Create new account
 router.post("/", validate({ body: createAccountSchema }), async (req, res) => {
-	const newAccount = await createAccount({
-		...req.body,
-		user_id: req.user!.userId,
-	});
+	const newAccount = await createAccount(
+		{
+			...req.body,
+			user_id: req.user!.userId,
+		},
+		req.user!.groupId
+	);
 	res.status(201).json({
 		message: "New Account created",
 		account: newAccount,

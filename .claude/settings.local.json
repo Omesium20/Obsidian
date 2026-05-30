@@ -25,7 +25,11 @@
       "Bash(npm test *)",
       "PowerShell(Get-Process *)",
       "Bash(find \"C:\\\\\\\\Users\\\\\\\\Owner\\\\\\\\Documents\\\\\\\\Projects\\\\\\\\Obsidian Financial\\\\\\\\Obsidian\\\\\\\\node\\\\\\\\src\\\\\\\\services\" -type f -name \"*.ts\" -o -name \"*.js\")",
-      "Bash(find \"C:\\\\\\\\Users\\\\\\\\Owner\\\\\\\\Documents\\\\\\\\Projects\\\\\\\\Obsidian Financial\\\\\\\\Obsidian\\\\\\\\node\\\\\\\\src\\\\\\\\repository\" -type f -name \"*.ts\" -o -name \"*.js\")"
+      "Bash(find \"C:\\\\\\\\Users\\\\\\\\Owner\\\\\\\\Documents\\\\\\\\Projects\\\\\\\\Obsidian Financial\\\\\\\\Obsidian\\\\\\\\node\\\\\\\\src\\\\\\\\repository\" -type f -name \"*.ts\" -o -name \"*.js\")",
+      "PowerShell(taskkill /PID 34860 /T /F)",
+      "Bash(find . -type d -iname \"*private_helper*\" -not -path \"*/node_modules/*\")",
+      "Bash(find . -type d -iname \"*markdown*\" -not -path \"*/node_modules/*\")",
+      "Bash(unzip -l Obsidian.zip)"
     ]
   }
 }

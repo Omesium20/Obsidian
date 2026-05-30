@@ -182,17 +182,6 @@ input, textarea { font-family: inherit; }
   color: var(--ink);
   display: inline-flex; align-items: center; gap: 9px;
 }
-.wordmark-mark {
-  width: 22px; height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--brand) 0%, var(--accent) 130%);
-  position: relative;
-  box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset, 0 4px 10px -4px var(--brand);
-}
-.wordmark-mark::after {
-  content: ''; position: absolute; inset: 4px; border-radius: 3px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.30), rgba(255,255,255,0));
-}
 
 /* =========== Utility =========== */
 .divider {
@@ -286,9 +275,6 @@ input, textarea { font-family: inherit; }
   display: flex; flex-direction: column; height: 100%;
 }
 .auth-brand .wordmark { color: white; }
-.auth-brand .wordmark-mark {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--accent) 130%);
-}
 
 .auth-pane {
   display: flex; align-items: center; justify-content: center;

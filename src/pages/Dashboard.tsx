@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Wordmark } from "../components/Wordmark";
 import { IconBolt, IconChart, IconShield } from "../components/icons";
 import { useRouter } from "../lib/router";
@@ -54,17 +54,24 @@ export function Dashboard() {
 	const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY);
 	const [loading, setLoading] = useState(true);
 
+	// Refetch the dashboard summary without touching the selected view — used
+	// after the user adds an account so it appears immediately.
+	const loadSummary = useCallback(async () => {
+		const data = await api.getDashboardSummary();
+		setSummary(data);
+		return data;
+	}, []);
+
 	useEffect(() => {
-		api.getDashboardSummary()
+		loadSummary()
 			.then((data) => {
-				setSummary(data);
 				// Default to "group" view if the user is in a shared household,
-				// otherwise stay on "me"
+				// otherwise stay on "me". Only on first load.
 				if (data.members.length > 1) setView("group");
 			})
 			.catch((err) => console.error("[Dashboard] Failed to load summary:", err))
 			.finally(() => setLoading(false));
-	}, []);
+	}, [loadSummary]);
 
 	const groupViews = useMemo(() => buildGroupViews(summary), [summary]);
 	const currentView = useMemo(() => buildDashboardView(summary, view), [summary, view]);
@@ -120,9 +127,25 @@ export function Dashboard() {
 						onViewAllTransactions={() => setTab("transactions")}
 					/>
 				) : null}
-				{tab === "transactions" ? <TabTransactions v={currentView} view={view} /> : null}
+				{tab === "transactions" ? (
+					<TabTransactions
+						v={currentView}
+						view={view}
+						accounts={summary.my_accounts}
+						onTransactionAdded={() => {
+							void loadSummary();
+						}}
+					/>
+				) : null}
 				{tab === "accounts" ? (
-					<TabAccounts v={currentView} view={view} accounts={currentAccounts} />
+					<TabAccounts
+						v={currentView}
+						view={view}
+						accounts={currentAccounts}
+						onAccountAdded={() => {
+							void loadSummary();
+						}}
+					/>
 				) : null}
 			</main>
 

@@ -76,9 +76,14 @@ export const getAccountTransactions = async (
 	};
 };
 
-// Create a new account need to add plaid_account_id for unique account ID's
-export const createAccount = async (accountData: TablesInsert<"accounts">) => {
-	const account = await newAccount(accountData);
+// Create a new account. Passes the creator's active group so the repository can
+// make the account visible on the household dashboard (alongside the owner
+// account_members row it always writes).
+export const createAccount = async (
+	accountData: TablesInsert<"accounts">,
+	groupId?: number | null
+) => {
+	const account = await newAccount(accountData, groupId);
 	return account;
 };
 

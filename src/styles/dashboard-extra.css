@@ -417,7 +417,7 @@
 .acct-group-head {
   width: 100%;
   display: grid;
-  grid-template-columns: 12px 1fr auto 16px;
+  grid-template-columns: 20px 1fr auto 16px;
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
@@ -430,9 +430,10 @@
 }
 .acct-group-head:hover { background: var(--surface-2); }
 .acct-group-mark {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Icon inherits this color via stroke="currentColor"; tone is set inline. */
 }
 .acct-group-title {
   display: flex;

@@ -48,11 +48,22 @@ export const findById = async (
 	}
 };
 
+// Create a manually-entered account. Mirrors the Plaid ingestion path
+// (insertPlaidAccount): in one transaction it inserts the account row, an
+// account_members row making the creator the 'owner', and — when the creator
+// has an active group — an account_group_visibility row so the account shows up
+// on the dashboard. Without the membership + visibility rows the new account
+// would be invisible (getMyDashboardAccounts joins account_members and the group
+// views join account_group_visibility).
 export const newAccount = async (
-	accountData: TablesInsert<"accounts">
+	accountData: TablesInsert<"accounts">,
+	groupId?: number | null
 ): Promise<Account> => {
+	const client = await pool.connect();
 	try {
-		const res = await pool.query(
+		await client.query("BEGIN");
+
+		const res = await client.query(
 			`INSERT INTO accounts (user_id, account_name, type, subtype, balance_current, balance_available, currency_code, institution_name, last_four, plaid_account_id, plaid_item_id, is_active)
 			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			RETURNING *`,
@@ -71,8 +82,27 @@ export const newAccount = async (
 				accountData.is_active ?? true,
 			]
 		);
-		return res.rows[0];
+		const account: Account = res.rows[0];
+
+		await client.query(
+			`INSERT INTO account_members (account_id, user_id, ownership_type)
+			VALUES ($1, $2, 'owner')`,
+			[account.id, accountData.user_id]
+		);
+
+		if (groupId) {
+			await client.query(
+				`INSERT INTO account_group_visibility (account_id, group_id)
+				VALUES ($1, $2)
+				ON CONFLICT (account_id, group_id) DO NOTHING`,
+				[account.id, groupId]
+			);
+		}
+
+		await client.query("COMMIT");
+		return account;
 	} catch (e) {
+		await client.query("ROLLBACK");
 		if (isPostgresError(e)) {
 			if (e.code === "23503") {
 				throw new ConflictError("Referenced user does not exist", {
@@ -90,6 +120,8 @@ export const newAccount = async (
 		throw new DatabaseError("Failed to create account", {
 			cause: e instanceof Error ? e.message : String(e),
 		});
+	} finally {
+		client.release();
 	}
 };
 

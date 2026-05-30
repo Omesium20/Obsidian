@@ -26,7 +26,11 @@ router.get("/:id", validate({ params: idParamSchema }), async (req, res) => {
 
 // Create new transaction
 router.post("/", validate({ body: createTransactionSchema }), async (req, res) => {
-	const newTransaction = await createTransaction({ ...req.body, user_id: req.user!.userId });
+	const { account_id, ...txBody } = req.body;
+	const newTransaction = await createTransaction(
+		{ ...txBody, user_id: req.user!.userId },
+		account_id
+	);
 	res.status(201).json({
 		message: "New Transaction created",
 		transaction: newTransaction,

@@ -124,8 +124,14 @@ function buildCategories(categories: Array<{ category: string; total: number }>)
 }
 
 function formatTxDate(isoDate: string): string {
-	// Append time to avoid UTC-to-local shift on date-only strings
-	const d = new Date(isoDate + "T12:00:00");
+	// transaction_date arrives either as a date-only string ("2026-05-30") or, when
+	// pg serializes a DATE column through JSON, as a full ISO timestamp
+	// ("2026-05-30T05:00:00.000Z"). Take just the leading YYYY-MM-DD and pin it to
+	// local noon so the displayed day never shifts across timezones — appending
+	// the time to a full ISO string would otherwise produce an Invalid Date.
+	const datePart = (isoDate ?? "").slice(0, 10);
+	const d = new Date(datePart + "T12:00:00");
+	if (Number.isNaN(d.getTime())) return "—";
 	return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
@@ -141,13 +147,16 @@ export function buildTransactions(
 		const acct = showOwner && gt.owner_first_name
 			? `${gt.owner_first_name} · ${acctBase}`
 			: acctBase;
+		// pg returns NUMERIC columns as strings, so coerce before any arithmetic —
+		// otherwise the KPI reduces (s + t.amt) concatenate strings into "$NaN".
+		const amt = Number(t.amount ?? 0);
 		return {
 			d: formatTxDate(t.transaction_date),
 			name: t.merchant_name || t.description || "Unknown",
 			cat: t.category || "Other",
-			amt: t.amount,
+			amt,
 			acct,
-			positive: t.amount > 0,
+			positive: amt > 0,
 			who: showOwner && gt.owner_first_name ? gt.owner_first_name[0] : undefined,
 		};
 	});

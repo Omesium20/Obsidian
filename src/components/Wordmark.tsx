@@ -1,3 +1,5 @@
+import { ObsidianMark } from "./ObsidianMark";
+
 type Size = "sm" | "md" | "lg";
 
 const SIZES: Record<Size, number> = { sm: 16, md: 18, lg: 22 };
@@ -12,15 +14,7 @@ export function Wordmark({ size = "md", light = false }: { size?: Size; light?: 
 				color: light ? "white" : undefined,
 			}}
 		>
-			<span
-				className="wordmark-mark"
-				style={{
-					width: MARK_SIZES[size],
-					height: MARK_SIZES[size],
-					fontSize: "18px",
-					opacity: 1,
-				}}
-			/>
+			<ObsidianMark size={MARK_SIZES[size]} />
 			Obsidian
 		</span>
 	);

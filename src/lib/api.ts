@@ -222,6 +222,49 @@ export const api = {
 			body: JSON.stringify({ public_token }),
 		}),
 
+	createManualAccount: (data: {
+		account_name: string;
+		type: string;
+		subtype?: string | null;
+		institution_name?: string | null;
+		last_four?: string | null;
+		balance_current?: number | null;
+	}) =>
+		request<{
+			message: string;
+			account: {
+				id: number;
+				account_name: string;
+				type: string;
+				subtype: string | null;
+			};
+		}>("/api/v1/accounts/", {
+			method: "POST",
+			body: JSON.stringify(data),
+		}),
+
+	createManualTransaction: (data: {
+		account_id: number;
+		transaction_date: string;
+		amount: number;
+		merchant_name: string;
+		category?: string | null;
+		description?: string | null;
+	}) =>
+		request<{
+			message: string;
+			transaction: {
+				id: number;
+				transaction_date: string;
+				amount: number;
+				merchant_name: string | null;
+				category: string | null;
+			};
+		}>("/api/v1/transactions/", {
+			method: "POST",
+			body: JSON.stringify(data),
+		}),
+
 	triggerSync: () =>
 		request<{
 			synced: number;
