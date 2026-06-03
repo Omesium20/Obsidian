@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
 	getGroupById,
 	removeGroup,
+	renameGroup,
 	leaveGroup,
 	kickMember,
 } from "../../services/groupService.js";
@@ -15,6 +16,7 @@ import {
 	deleteGroupSchema,
 	leaveGroupSchema,
 	kickMemberSchema,
+	renameGroupSchema,
 } from "../../schemas/groupSchemas.js";
 
 const router = Router();
@@ -71,6 +73,20 @@ router.post("/leave", authorizeMember, attachFreshToken, validate({ body: leaveG
 		message: "Successfully left the group",
 		membership,
 		new_group_id: newGroupId,
+	});
+});
+
+// Rename a group (creator only). Operates on the caller's own group from the JWT.
+router.patch("/", authorizeCreator, validate({ body: renameGroupSchema }), async (req, res) => {
+	const group = await renameGroup(
+		req.user!.groupId!,
+		req.user!.userId,
+		req.user!.role,
+		req.body.name
+	);
+	res.status(200).json({
+		message: "Group renamed",
+		group,
 	});
 });
 

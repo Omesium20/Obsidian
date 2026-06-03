@@ -5,6 +5,7 @@ import {
 	findByEmail,
 	getAllUsers,
 	newUser,
+	updateUserName,
 	deleteProfile,
 } from "../../repository/userRepository.js";
 import { ConflictError } from "../../errors/index.js";
@@ -143,6 +144,41 @@ describe("userRepository", () => {
 					(user as Record<string, unknown>).password_hash
 				).toBeUndefined();
 			});
+		});
+	});
+
+	// ============================================
+	// updateUserName
+	// ============================================
+
+	describe("updateUserName", () => {
+		it("should update first/last name and return the row without password_hash", async () => {
+			const seeded = await seedUser();
+
+			const updated = await updateUserName(seeded.id, "Robert", "Jones");
+			expect(updated).toBeDefined();
+			expect(updated!.id).toBe(seeded.id);
+			expect(updated!.first_name).toBe("Robert");
+			expect(updated!.last_name).toBe("Jones");
+			expect(updated).not.toHaveProperty("password_hash");
+
+			// Persisted, not just returned
+			const found = await findById(seeded.id);
+			expect(found!.first_name).toBe("Robert");
+			expect(found!.last_name).toBe("Jones");
+		});
+
+		it("should allow an empty last name (single-word display name)", async () => {
+			const seeded = await seedUser();
+
+			const updated = await updateUserName(seeded.id, "Madonna", "");
+			expect(updated!.first_name).toBe("Madonna");
+			expect(updated!.last_name).toBe("");
+		});
+
+		it("should return undefined for a non-existent user", async () => {
+			const updated = await updateUserName(99999, "No", "Body");
+			expect(updated).toBeUndefined();
 		});
 	});
 

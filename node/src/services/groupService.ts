@@ -3,6 +3,7 @@ import {
 	getAllGroups,
 	findGroupById,
 	deleteGroup,
+	updateGroupName,
 	getMembership,
 	removeMember,
 	createPersonalGroupForUser,
@@ -96,6 +97,36 @@ export const removeGroup = async (
 	} finally {
 		client.release();
 	}
+};
+
+// Rename the caller's group. Only the group's creator (or an admin) may do this.
+// The route already gates on the token role via authorizeCreator; this re-checks
+// the user's actual membership role as defense in depth.
+export const renameGroup = async (
+	groupId: number,
+	requestingUserId: number,
+	requestingRole: string | null,
+	name: string
+) => {
+	const group = await findGroupById(groupId);
+	if (!group) {
+		throw new NotFoundError("Group", String(groupId));
+	}
+
+	if (requestingRole !== "admin") {
+		const membership = await getMembership(groupId, requestingUserId);
+		if (!membership || membership.role !== "creator") {
+			throw new AuthorizationError(
+				"Only the group creator can rename this group"
+			);
+		}
+	}
+
+	const updated = await updateGroupName(groupId, name);
+	if (!updated) {
+		throw new NotFoundError("Group", String(groupId));
+	}
+	return updated;
 };
 
 // Members can leave (except creator). Admins can remove any member. Soft-departs

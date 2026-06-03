@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { truncateAll, seedUser } from "../helpers/dbHelper.js";
 import {
 	getAllGroups,
-	findById,
+	findGroupById,
+	updateGroupName,
 	newGroup,
 	getMembership,
 	findActiveMembership,
@@ -76,10 +77,10 @@ describe("groupRepository", () => {
 	});
 
 	// ============================================
-	// findById
+	// findGroupById
 	// ============================================
 
-	describe("findById", () => {
+	describe("findGroupById", () => {
 		it("should return the group by id", async () => {
 			const user = await seedUser();
 			const group = await newGroup(
@@ -87,14 +88,42 @@ describe("groupRepository", () => {
 				user.id
 			);
 
-			const found = await findById(group.id);
+			const found = await findGroupById(group.id);
 			expect(found).toBeDefined();
 			expect(found!.name).toBe("Lookup Test");
 		});
 
 		it("should return undefined for non-existent id", async () => {
-			const found = await findById(99999);
+			const found = await findGroupById(99999);
 			expect(found).toBeUndefined();
+		});
+	});
+
+	// ============================================
+	// updateGroupName
+	// ============================================
+
+	describe("updateGroupName", () => {
+		it("should rename the group and return the updated row", async () => {
+			const user = await seedUser();
+			const group = await newGroup(
+				{ name: "Old Name", member_count: 1 },
+				user.id
+			);
+
+			const updated = await updateGroupName(group.id, "New Name");
+			expect(updated).toBeDefined();
+			expect(updated!.id).toBe(group.id);
+			expect(updated!.name).toBe("New Name");
+
+			// Persisted, not just returned
+			const found = await findGroupById(group.id);
+			expect(found!.name).toBe("New Name");
+		});
+
+		it("should return undefined for a non-existent group", async () => {
+			const updated = await updateGroupName(99999, "Nope");
+			expect(updated).toBeUndefined();
 		});
 	});
 
@@ -224,7 +253,7 @@ describe("groupRepository", () => {
 			expect(deleted!.name).toBe("Delete Me");
 
 			// Verify actually deleted
-			const found = await findById(group.id);
+			const found = await findGroupById(group.id);
 			expect(found).toBeUndefined();
 		});
 

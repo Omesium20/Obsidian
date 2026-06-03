@@ -130,6 +130,26 @@ export const createPersonalGroupForUser = async (
 	}
 };
 
+// Rename a group. The creator-only authorization is enforced by the service
+// layer; this is the atomic update.
+export const updateGroupName = async (
+	groupId: number,
+	name: string
+): Promise<Group | undefined> => {
+	try {
+		const res = await pool.query(
+			`UPDATE groups SET name = $2 WHERE id = $1 RETURNING *`,
+			[groupId, name]
+		);
+		return res.rows[0];
+	} catch (e) {
+		throw new DatabaseError("Failed to rename group", {
+			groupId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
 // Get a user's membership in a group used for checking if creator
 export const getMembership = async (
 	groupId: number,

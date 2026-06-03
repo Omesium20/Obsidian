@@ -222,6 +222,26 @@ export const api = {
 			body: JSON.stringify({ token }),
 		}),
 
+	// Update the caller's own display name (first/last). Any logged-in user.
+	updateProfile: (first_name: string, last_name: string) =>
+		request<{
+			message: string;
+			user: { id: number; first_name: string; last_name: string };
+		}>("/api/v1/users/", {
+			method: "PATCH",
+			body: JSON.stringify({ first_name, last_name }),
+		}),
+
+	// Rename the caller's current group/household. Creator-only (enforced server-side).
+	renameGroup: (name: string) =>
+		request<{
+			message: string;
+			group: { id: number; name: string };
+		}>("/api/v1/groups/", {
+			method: "PATCH",
+			body: JSON.stringify({ name }),
+		}),
+
 	sendInvitation: (invitee_email: string) =>
 		request<{ message: string; invitationId: number | string }>("/api/v1/invitations", {
 			method: "POST",

@@ -243,6 +243,8 @@ export function SettingsModal({
 	onClose,
 	onLogout,
 	onChangePassword,
+	onRenameGroup,
+	onUpdateProfile,
 	user,
 	groupName,
 	groupViews,
@@ -250,15 +252,70 @@ export function SettingsModal({
 	onClose: () => void;
 	onLogout: () => void;
 	onChangePassword: () => void;
+	onRenameGroup: (name: string) => Promise<void>;
+	onUpdateProfile: (firstName: string, lastName: string) => Promise<void>;
 	user: { first_name: string; last_name: string; email: string; username: string };
 	groupName: string;
 	groupViews: GroupView[];
 }) {
 	const [section, setSection] = useState<SettingsSection>("account");
-	const [name, setName] = useState(`${user.first_name} ${user.last_name}`);
+	const originalName = `${user.first_name} ${user.last_name}`.trim();
+	const [name, setName] = useState(originalName);
 	const [email, setEmail] = useState(user.email);
 	const [notif, setNotif] = useState(true);
 	const [emailNotif, setEN] = useState(true);
+
+	// Only the household's creator may rename it (server enforces this too).
+	const isCreator = groupViews.find((g) => g.k === "me")?.role === "creator";
+	const [householdName, setHouseholdName] = useState(groupName);
+	const [saving, setSaving] = useState(false);
+	const [nameErr, setNameErr] = useState("");
+	const [groupErr, setGroupErr] = useState("");
+
+	// Persist any pending display-name and household-rename changes, then close.
+	// Unchanged values (and, for the household, non-creators) are no-ops. Keeps
+	// the modal open on failure so the relevant error is visible.
+	const handleSave = async () => {
+		setSaving(true);
+		setNameErr("");
+		setGroupErr("");
+
+		// Display name → first/last (first word, remainder). Any user may do this.
+		const trimmedName = name.trim().replace(/\s+/g, " ");
+		if (trimmedName && trimmedName !== originalName) {
+			const [first, ...rest] = trimmedName.split(" ");
+			try {
+				await onUpdateProfile(first, rest.join(" "));
+			} catch (e) {
+				setNameErr(
+					e instanceof ApiError
+						? e.message
+						: "Could not update display name. Please try again."
+				);
+				setSaving(false);
+				return;
+			}
+		}
+
+		// Household rename — creator only.
+		const trimmedHouse = householdName.trim();
+		if (isCreator && trimmedHouse && trimmedHouse !== groupName) {
+			try {
+				await onRenameGroup(trimmedHouse);
+			} catch (e) {
+				setGroupErr(
+					e instanceof ApiError
+						? e.message
+						: "Could not rename household. Please try again."
+				);
+				setSaving(false);
+				return;
+			}
+		}
+
+		setSaving(false);
+		onClose();
+	};
 
 	return (
 		<ModalShell
@@ -287,11 +344,15 @@ export function SettingsModal({
 						Log out
 					</button>
 					<div style={{ flex: 1 }} />
-					<button className="btn btn-ghost" onClick={onClose}>
+					<button className="btn btn-ghost" onClick={onClose} disabled={saving}>
 						Close
 					</button>
-					<button className="btn btn-brand" onClick={onClose}>
-						Save changes
+					<button
+						className="btn btn-brand"
+						onClick={() => void handleSave()}
+						disabled={saving}
+					>
+						{saving ? "Saving…" : "Save changes"}
 					</button>
 				</>
 			}
@@ -324,7 +385,12 @@ export function SettingsModal({
 									className="input"
 									value={name}
 									onChange={(e) => setName(e.target.value)}
+									disabled={saving}
+									maxLength={101}
 								/>
+								{nameErr ? (
+									<span className="field-error">{nameErr}</span>
+								) : null}
 							</label>
 							<label className="db-field">
 								<span className="db-field-l">Email</span>
@@ -346,7 +412,21 @@ export function SettingsModal({
 						<>
 							<div className="db-field">
 								<span className="db-field-l">Household name</span>
-								<input className="input" defaultValue={groupName} />
+								<input
+									className="input"
+									value={householdName}
+									onChange={(e) => setHouseholdName(e.target.value)}
+									disabled={!isCreator || saving}
+									maxLength={100}
+								/>
+								{!isCreator ? (
+									<span className="db-field-hint">
+										Only the household creator can rename it.
+									</span>
+								) : null}
+								{groupErr ? (
+									<span className="field-error">{groupErr}</span>
+								) : null}
 							</div>
 							<div className="db-field">
 								<span className="db-field-l">Members</span>

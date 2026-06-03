@@ -103,6 +103,30 @@ export const newUser = async (
 	}
 };
 
+// Update a user's display name (first/last). Authorization (own account only)
+// is enforced by the route via the JWT userId; this is the atomic update.
+export const updateUserName = async (
+	userId: number,
+	firstName: string,
+	lastName: string
+): Promise<UserSensitive | undefined> => {
+	try {
+		const res = await pool.query(
+			`UPDATE users
+			SET first_name = $2, last_name = $3, updated_at = NOW()
+			WHERE id = $1
+			RETURNING id, email, username, first_name, last_name, created_at, updated_at`,
+			[userId, firstName, lastName]
+		);
+		return res.rows[0];
+	} catch (e) {
+		throw new DatabaseError("Failed to update user name", {
+			userId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
 // Delete user profile
 export const deleteProfile = async (
 	userId: number

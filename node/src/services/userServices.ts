@@ -2,6 +2,7 @@ import {
 	getAllUsers,
 	newUser,
 	findById,
+	updateUserName,
 	deleteProfile,
 } from "../repository/userRepository.js";
 import { getTransactionsWithAccounts } from "../repository/transactionRepository.js";
@@ -26,6 +27,20 @@ export const getUserById = async (id: number) => {
 export const createUser = async (newUserdata: TablesInsert<"users">) => {
 	const userData = await newUser(newUserdata);
 	return userData;
+};
+
+// Update the caller's own display name. The route restricts this to the
+// authenticated user's own id, so any logged-in user can rename themselves.
+export const updateProfile = async (
+	userId: number,
+	firstName: string,
+	lastName: string
+) => {
+	const updated = await updateUserName(userId, firstName, lastName);
+	if (!updated) {
+		throw new NotFoundError("User", String(userId));
+	}
+	return updated;
 };
 
 export const removeUser = async (id: number) => {

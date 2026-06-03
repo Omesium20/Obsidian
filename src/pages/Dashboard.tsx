@@ -92,6 +92,20 @@ export function Dashboard() {
 		navigate("/forgot-password");
 	};
 
+	// Rename the household, then refresh the summary so the new name shows
+	// everywhere it's displayed. Errors propagate to the modal for display.
+	const handleRenameGroup = async (name: string) => {
+		await api.renameGroup(name);
+		await loadSummary();
+	};
+
+	// Update the logged-in user's display name, then refresh the summary so the
+	// new name shows everywhere. Errors propagate to the modal for display.
+	const handleUpdateProfile = async (firstName: string, lastName: string) => {
+		await api.updateProfile(firstName, lastName);
+		await loadSummary();
+	};
+
 	if (loading) {
 		return (
 			<div className="dboard">
@@ -158,6 +172,8 @@ export function Dashboard() {
 						void handleLogout();
 					}}
 					onChangePassword={handleChangePassword}
+					onRenameGroup={handleRenameGroup}
+					onUpdateProfile={handleUpdateProfile}
 					user={summary.user}
 					groupName={summary.group?.name ?? "My Household"}
 					groupViews={groupViews}
