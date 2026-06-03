@@ -3,6 +3,7 @@ import { truncateAll, seedUser, pool } from "../helpers/dbHelper.js";
 import {
 	storeRefreshToken,
 	findRefreshToken,
+	touchRefreshToken,
 	revokeRefreshToken,
 	revokeAllUserRefreshTokens,
 } from "../../repository/refreshTokenRepository.js";
@@ -70,6 +71,30 @@ describe("refreshTokenRepository", () => {
 		it("should return undefined for non-existent token", async () => {
 			const found = await findRefreshToken("does_not_exist");
 			expect(found).toBeUndefined();
+		});
+	});
+
+	// ============================================
+	// touchRefreshToken
+	// ============================================
+
+	describe("touchRefreshToken", () => {
+		it("should bump last_used_at and slide expires_at without revoking", async () => {
+			const user = await seedUser();
+			const oldExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+			await storeRefreshToken(user.id, "active_token", oldExpiry);
+
+			const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+			await touchRefreshToken("active_token", newExpiry);
+
+			// Still findable (not revoked) and activity/expiry updated
+			const found = await findRefreshToken("active_token");
+			expect(found).toBeDefined();
+			expect(found!.revoked_at).toBeNull();
+			expect(found!.last_used_at).not.toBeNull();
+			expect(new Date(found!.expires_at).getTime()).toBeGreaterThan(
+				oldExpiry.getTime()
+			);
 		});
 	});
 

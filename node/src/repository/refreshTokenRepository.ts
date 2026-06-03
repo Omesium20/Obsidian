@@ -39,6 +39,27 @@ export const findRefreshToken = async (
 	}
 };
 
+// Mark a refresh token as freshly used: bump last_used_at (drives the inactivity
+// check) and slide expires_at forward so an actively-used session doesn't hit the
+// absolute 7-day cap. Called on every silent refresh instead of rotating.
+export const touchRefreshToken = async (
+	tokenHash: string,
+	expiresAt: Date
+): Promise<void> => {
+	try {
+		await pool.query(
+			`UPDATE refresh_tokens
+			SET last_used_at = NOW(), expires_at = $2
+			WHERE token_hash = $1`,
+			[tokenHash, expiresAt]
+		);
+	} catch (e) {
+		throw new DatabaseError("Failed to update refresh token activity", {
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
 export const revokeRefreshToken = async (tokenHash: string): Promise<void> => {
 	try {
 		await pool.query(

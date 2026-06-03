@@ -110,6 +110,29 @@ export class ApiError extends Error {
 	}
 }
 
+// Keep in sync with INACTIVITY_LIMIT_MS in
+// node/src/services/auth/refreshService.ts. The server slides
+// refresh_tokens.last_used_at on every authenticated request and expires the
+// session after this much inactivity; the client mirrors it so it can log out
+// proactively instead of sitting on a stale, already-dead page.
+export const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
+
+type SessionListener = () => void;
+let onActivity: SessionListener | null = null;
+let onSessionExpired: SessionListener | null = null;
+
+// Registered by the app's protected shell (ProtectedRoute) so the API layer can
+// drive the client-side inactivity timer (onActivity — fired on every successful
+// request, matching when the server slides last_used_at) and react to a
+// server-ended session (onSessionExpired — fired on a 401). Passing {} clears them.
+export function setSessionListeners(listeners: {
+	onActivity?: SessionListener;
+	onSessionExpired?: SessionListener;
+}) {
+	onActivity = listeners.onActivity ?? null;
+	onSessionExpired = listeners.onSessionExpired ?? null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, {
 		credentials: "include",
@@ -124,8 +147,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const body = text ? (JSON.parse(text) as ApiErrorBody & Record<string, unknown>) : {};
 
 	if (!res.ok) {
+		// 401 means the server rejected the session (expired access token with no
+		// valid refresh, or an inactivity-revoked refresh token). Let the app tear
+		// down the session and redirect rather than leave a broken page up.
+		if (res.status === 401) {
+			onSessionExpired?.();
+		}
 		throw new ApiError(res.status, body);
 	}
+
+	// A successful authenticated request is "activity" — slide the client timer.
+	onActivity?.();
 	return body as T;
 }
 

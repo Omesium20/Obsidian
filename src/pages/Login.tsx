@@ -11,7 +11,6 @@ export function Login() {
 	const returnTo = useQueryParam("returnTo");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
-	const [remember, setRemember] = useState(true);
 	const [loading, setLoading] = useState(false);
 	const [err, setErr] = useState("");
 
@@ -135,15 +134,6 @@ export function Login() {
 					</Field>
 
 					{err ? <div className="field-error">{err}</div> : null}
-
-					<label className="checkbox-row">
-						<input
-							type="checkbox"
-							checked={remember}
-							onChange={(e) => setRemember(e.target.checked)}
-						/>
-						Keep me logged in for 7 days
-					</label>
 
 					<button
 						type="submit"

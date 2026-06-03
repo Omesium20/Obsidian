@@ -79,6 +79,15 @@ export default defineConfig({
 					],
 				},
 			},
+			{
+				test: {
+					name: "refreshService",
+					testTimeout: 60000,
+					include: [
+						"node/src/tests/service/refreshService.test.ts",
+					],
+				},
+			},
 		],
 	},
 });

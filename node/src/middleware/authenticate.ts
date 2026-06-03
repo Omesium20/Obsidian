@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { verifyAccessToken, AccessTokenPayload } from "../utils/jwt.js";
-import { refreshTokens } from "../services/auth/refreshService.js";
+import { refreshTokens, recordRefreshTokenActivity } from "../services/auth/refreshService.js";
 import AuthenticationError from "../errors/authenticationError.js";
 import DatabaseError from "../errors/databaseError.js";
 
@@ -31,6 +31,12 @@ export const authenticate = async (
 		try {
 			const payload = verifyAccessToken(cleanToken);
 			req.user = payload;
+			// Access token is still valid — bump activity so the inactivity
+			// timer reflects this request. Best-effort (never throws).
+			const refreshCookie = req.cookies?.refreshToken;
+			if (refreshCookie) {
+				await recordRefreshTokenActivity(refreshCookie);
+			}
 			return next();
 		} catch (err) {
 			if (!(err instanceof jwt.TokenExpiredError)) {

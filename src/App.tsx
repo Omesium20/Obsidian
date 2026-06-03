@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Router, useRouter } from "./lib/router";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
@@ -8,7 +8,7 @@ import { ResetPassword } from "./pages/ResetPassword";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Dashboard } from "./pages/Dashboard";
 import { Onboarding } from "./pages/Onboarding";
-import { api, ApiError } from "./lib/api";
+import { api, ApiError, setSessionListeners, INACTIVITY_LIMIT_MS } from "./lib/api";
 
 const TITLES: Record<string, string> = {
 	"/": "Obsidian — Personal finance for households",
@@ -25,20 +25,58 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 	const { navigate, path, search } = useRouter();
 	const [ready, setReady] = useState(false);
 
+	// Send the user to login, preserving where they were so they can return.
+	const redirectToLogin = useCallback(() => {
+		const returnTo = encodeURIComponent(path + search);
+		navigate(`/login?returnTo=${returnTo}`);
+	}, [navigate, path, search]);
+
+	// Client-side inactivity guard. The server slides refresh_tokens.last_used_at
+	// on every authenticated request and revokes the session after
+	// INACTIVITY_LIMIT_MS of inactivity. We mirror that with a timer that resets
+	// on each successful request (onActivity). If the user goes idle past the
+	// window — e.g. just staring at the dashboard, which never polls — we
+	// proactively log out (api.logout() sets revoked_at server-side) and redirect,
+	// instead of leaving a logged-in-looking page that's already dead. A 401 from
+	// any request (onSessionExpired) means the server already ended the session,
+	// so we just redirect.
+	useEffect(() => {
+		let timer: number | undefined;
+
+		const expireNow = async () => {
+			try {
+				await api.logout();
+			} catch {
+				// Best-effort revoke; redirect regardless.
+			}
+			redirectToLogin();
+		};
+
+		const resetTimer = () => {
+			window.clearTimeout(timer);
+			timer = window.setTimeout(() => void expireNow(), INACTIVITY_LIMIT_MS);
+		};
+
+		setSessionListeners({ onActivity: resetTimer, onSessionExpired: redirectToLogin });
+		resetTimer(); // start the clock on mount
+
+		return () => {
+			window.clearTimeout(timer);
+			setSessionListeners({});
+		};
+	}, [redirectToLogin]);
+
 	useEffect(() => {
 		api.getSession()
 			.then(() => setReady(true))
 			.catch((e) => {
-				if (e instanceof ApiError && e.status === 401) {
-					const returnTo = encodeURIComponent(path + search);
-					navigate(`/login?returnTo=${returnTo}`);
-				} else {
+				// 401 is handled by the onSessionExpired listener (redirect). For any
+				// other error, render the children rather than blocking the page.
+				if (!(e instanceof ApiError && e.status === 401)) {
 					setReady(true);
 				}
 			});
-	// path and search are intentionally excluded — we only want to check auth
-	// once when the component mounts, not on every navigation.
-	// eslint-disable-next-line react-hooks/exhaustive-deps
+	// Auth is checked once on mount, not on every navigation.
 	}, []);
 
 	if (!ready) return null;
