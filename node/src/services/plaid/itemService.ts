@@ -5,6 +5,7 @@ import { encryptToken } from "../../utils/plaidCrypto.js";
 import { insertPlaidItem, insertPlaidAccount, findByUserId } from "../../repository/plaidItemRepository.js";
 import { sanitizePlaidAccountType } from "./subtypeMap.js";
 import { syncTransactions } from "./transactionsSyncService.js";
+import { upsertAccountSnapshot } from "../../repository/balanceSnapshotRepository.js";
 import { ExternalServiceError, DatabaseError, ConflictError } from "../../errors/index.js";
 
 export interface LinkedAccount {
@@ -138,6 +139,10 @@ export const exchangePublicToken = async (
 				balanceAvailable: acct.balances?.available ?? null,
 				currencyCode: acct.balances?.iso_currency_code ?? "USD",
 			}, client);
+
+			// Seed the net-worth series with the link-time balance, in the same
+			// transaction as the account insert.
+			await upsertAccountSnapshot(accountRowId, acct.balances?.current ?? null, client);
 
 			linkedAccounts.push({
 				id: accountRowId,

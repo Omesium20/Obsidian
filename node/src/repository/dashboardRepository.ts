@@ -22,6 +22,14 @@ export interface DashboardMonthly {
 	spending: number;
 }
 
+// One net-worth point per calendar month, derived from per-account balance
+// snapshots (assets − liabilities). Oldest-to-newest, 'Mon YYYY' labels that
+// line up with DashboardMonthly so charts share an x-axis.
+export interface DashboardNetWorth {
+	month: string;
+	net_worth: number;
+}
+
 // A spending-by-category row scoped to a single calendar month. The dashboard
 // returns these for a rolling 12-month window so the frontend can aggregate the
 // categories that fall inside whatever timeframe (1M/3M/6M/1Y) the user picks —
@@ -39,6 +47,7 @@ export interface DashboardMember {
 	role: string;
 	monthly: DashboardMonthly[];
 	categories: DashboardMonthlyCategory[];
+	net_worth: DashboardNetWorth[];
 }
 
 export interface DashboardAccount {
@@ -598,6 +607,93 @@ export const getGroupDashboardCategories = async (groupId: number): Promise<Dash
 		}));
 	} catch (e) {
 		throw new DatabaseError("Failed to fetch group categories", {
+			groupId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Builds a monthly net-worth time series from per-account balance snapshots.
+// `scopeCte` is a SELECT that yields the in-view accounts as (id, type); the
+// three public functions below differ only in that scope (the user's accounts,
+// the group's shared accounts, or one member's group-shared accounts).
+//
+// Semantics: for each month from the first recorded snapshot through the current
+// month, take each account's latest snapshot on-or-before that month's end
+// (last-observation carry-forward, so an account that didn't update in a given
+// month keeps its prior balance rather than dropping to zero), then sum assets
+// minus liabilities — credit/loan balances subtract. If there are no snapshots
+// in scope, the bounds CTE yields NULL and generate_series returns no rows, so
+// the series is simply empty.
+const netWorthSeriesQuery = (scopeCte: string): string => `
+	WITH scope AS (${scopeCte}),
+	bounds AS (
+		SELECT date_trunc('month', MIN(s.snapshot_date)) AS first_month
+		FROM account_balance_snapshots s
+		JOIN scope ON scope.id = s.account_id
+	),
+	months AS (
+		SELECT generate_series(
+			(SELECT first_month FROM bounds),
+			date_trunc('month', NOW()),
+			interval '1 month'
+		) AS month_start
+	),
+	per AS (
+		SELECT m.month_start, sc.type,
+			(SELECT s.balance FROM account_balance_snapshots s
+			  WHERE s.account_id = sc.id
+			    AND s.snapshot_date < m.month_start + interval '1 month'
+			  ORDER BY s.snapshot_date DESC LIMIT 1) AS bal
+		FROM months m CROSS JOIN scope sc
+	)
+	SELECT TO_CHAR(month_start, 'Mon YYYY') AS month,
+		COALESCE(SUM(CASE WHEN type IN ('credit', 'loan')
+			THEN -COALESCE(bal, 0) ELSE COALESCE(bal, 0) END), 0)::float AS net_worth
+	FROM per
+	GROUP BY month_start
+	ORDER BY month_start`;
+
+const mapNetWorthRows = (rows: { month: string; net_worth: number }[]): DashboardNetWorth[] =>
+	rows.map((r) => ({ month: r.month as string, net_worth: r.net_worth as number }));
+
+// Net-worth series scoped to every account the user personally holds (owner,
+// joint, or authorized_user) — the same scope as getMyDashboardAccounts.
+export const getUserNetWorthSeries = async (userId: number): Promise<DashboardNetWorth[]> => {
+	try {
+		const res = await pool.query(
+			netWorthSeriesQuery(`
+				SELECT a.id, a.type FROM accounts a
+				JOIN account_members am ON am.account_id = a.id
+				WHERE am.user_id = $1
+				  AND am.ownership_type IN ('owner', 'joint', 'authorized_user')
+				  AND a.is_active = true`),
+			[userId]
+		);
+		return mapNetWorthRows(res.rows);
+	} catch (e) {
+		throw new DatabaseError("Failed to fetch user net worth", {
+			userId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Net-worth series across all accounts shared with the group via
+// account_group_visibility — the household's combined picture.
+export const getGroupNetWorthSeries = async (groupId: number): Promise<DashboardNetWorth[]> => {
+	try {
+		const res = await pool.query(
+			netWorthSeriesQuery(`
+				SELECT a.id, a.type FROM accounts a
+				JOIN account_group_visibility agv ON agv.account_id = a.id
+				WHERE agv.group_id = $1
+				  AND a.is_active = true`),
+			[groupId]
+		);
+		return mapNetWorthRows(res.rows);
+	} catch (e) {
+		throw new DatabaseError("Failed to fetch group net worth", {
 			groupId,
 			cause: e instanceof Error ? e.message : String(e),
 		});

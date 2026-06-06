@@ -43,6 +43,8 @@ const EMPTY_SUMMARY: DashboardSummary = {
 	group_monthly: [],
 	my_categories: [],
 	group_categories: [],
+	my_net_worth: [],
+	group_net_worth: [],
 };
 
 export function Dashboard() {

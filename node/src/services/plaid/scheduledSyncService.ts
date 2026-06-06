@@ -10,6 +10,7 @@ import {
 	getDecryptedAccessToken,
 } from "../../repository/plaidItemRepository.js";
 import { syncTransactions } from "./transactionsSyncService.js";
+import { refreshItemBalances } from "./balanceRefreshService.js";
 
 async function syncGroup(groupId: number): Promise<void> {
 	const claimed = await claimGroupSync(groupId);
@@ -19,6 +20,16 @@ async function syncGroup(groupId: number): Promise<void> {
 	for (const item of items) {
 		try {
 			const token = getDecryptedAccessToken(item);
+			// Refresh balances + snapshot first so the net-worth series stays
+			// current; a balance failure shouldn't block the transaction sync.
+			try {
+				await refreshItemBalances(token);
+			} catch (e) {
+				console.error(
+					`[scheduledSync] balance refresh group=${groupId} item=${item.id} failed`,
+					e
+				);
+			}
 			const result = await syncTransactions(
 				item.id,
 				token,

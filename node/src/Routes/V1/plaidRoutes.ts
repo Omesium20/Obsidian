@@ -15,6 +15,7 @@ import {
 	getGroupSyncStatus,
 } from "../../repository/groupRepository.js";
 import { syncTransactions } from "../../services/plaid/transactionsSyncService.js";
+import { refreshItemBalances } from "../../services/plaid/balanceRefreshService.js";
 
 const router = Router();
 
@@ -65,6 +66,13 @@ router.post("/sync", async (req, res) => {
 	for (const item of items) {
 		try {
 			const token = getDecryptedAccessToken(item);
+			// Refresh balances + snapshot before the transaction sync; a balance
+			// failure is logged but doesn't fail the whole sync for this item.
+			try {
+				await refreshItemBalances(token);
+			} catch (e) {
+				console.error(`[sync] balance refresh item=${item.id} failed`, e);
+			}
 			const r = await syncTransactions(
 				item.id,
 				token,

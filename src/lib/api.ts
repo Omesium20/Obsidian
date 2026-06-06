@@ -19,6 +19,7 @@ export type DashboardSummary = {
 		role: string;
 		monthly: Array<{ month: string; income: number; spending: number }>;
 		categories: Array<{ month: string; category: string; total: number }>;
+		net_worth: Array<{ month: string; net_worth: number }>;
 	}>;
 	my_accounts: Array<{
 		id: number;
@@ -78,6 +79,8 @@ export type DashboardSummary = {
 	group_monthly: Array<{ month: string; income: number; spending: number }>;
 	my_categories: Array<{ month: string; category: string; total: number }>;
 	group_categories: Array<{ month: string; category: string; total: number }>;
+	my_net_worth: Array<{ month: string; net_worth: number }>;
+	group_net_worth: Array<{ month: string; net_worth: number }>;
 };
 
 export type TxPageFilter = "all" | "income" | "spend";

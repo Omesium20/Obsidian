@@ -6,8 +6,6 @@ import {
 	CartesianGrid,
 	Cell,
 	ComposedChart,
-	Legend,
-	Line,
 	Pie,
 	PieChart as RPieChart,
 	ResponsiveContainer,
@@ -18,7 +16,7 @@ import {
 	type PieSectorShapeProps,
 	type TooltipContentProps,
 } from "recharts";
-import { fmt, type Category, type Month } from "./data";
+import { fmt, type Category, type Month, type NetWorthPoint } from "./data";
 
 // Recharts paints series via SVG presentation attributes (fill/stroke), where
 // CSS var() does NOT resolve — so series colors are concrete oklch() literals
@@ -77,28 +75,24 @@ function TipCard({ title, rows }: { title: string; rows: TipRow[] }) {
 }
 
 // ============================================================
-// Income vs Spending — line/area over time
+// Net worth over time — single area line
 // ============================================================
-export function DualLineChart({ months }: { months: Month[] }) {
+export function NetWorthChart({ points }: { points: NetWorthPoint[] }) {
 	const data = useMemo(
-		() => months.map((m) => ({ month: m.m, income: m.inc, spending: m.spend })),
-		[months]
+		() => points.map((p) => ({ month: p.m, netWorth: p.netWorth })),
+		[points]
 	);
 
-	if (data.length === 0) return <ChartEmpty label="No activity in this period." />;
+	if (data.length === 0)
+		return <ChartEmpty label="Net worth history will appear as it's tracked." />;
 
 	const tooltip = (p: TooltipContentProps) => {
 		if (!p.active || !p.payload?.length) return null;
-		const inc = Number(p.payload.find((d) => d.dataKey === "income")?.value ?? 0);
-		const spend = Number(p.payload.find((d) => d.dataKey === "spending")?.value ?? 0);
+		const nw = Number(p.payload[0].value ?? 0);
 		return (
 			<TipCard
 				title={String(p.label)}
-				rows={[
-					{ label: "Income", value: inc, color: COLOR.income },
-					{ label: "Spending", value: spend, color: COLOR.spending },
-					{ label: "Net", value: inc - spend, color: COLOR.saved, signed: true },
-				]}
+				rows={[{ label: "Net worth", value: nw, color: COLOR.income }]}
 			/>
 		);
 	};
@@ -108,7 +102,7 @@ export function DualLineChart({ months }: { months: Month[] }) {
 			<ResponsiveContainer width="100%" height={280}>
 				<ComposedChart data={data} margin={{ top: 16, right: 16, bottom: 8, left: 4 }}>
 					<defs>
-						<linearGradient id="incFill" x1="0" y1="0" x2="0" y2="1">
+						<linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
 							<stop offset="0%" stopColor={COLOR.income} stopOpacity={0.18} />
 							<stop offset="100%" stopColor={COLOR.income} stopOpacity={0} />
 						</linearGradient>
@@ -123,29 +117,13 @@ export function DualLineChart({ months }: { months: Month[] }) {
 						tickFormatter={yAxisTick}
 					/>
 					<Tooltip content={tooltip} cursor={{ stroke: "var(--ink-3)", strokeDasharray: "3 3" }} />
-					<Legend
-						verticalAlign="bottom"
-						height={28}
-						iconType="plainline"
-						wrapperStyle={{ fontSize: 12 }}
-					/>
 					<Area
-						name="Income"
+						name="Net worth"
 						type="monotone"
-						dataKey="income"
+						dataKey="netWorth"
 						stroke={COLOR.income}
 						strokeWidth={2.2}
-						fill="url(#incFill)"
-						activeDot={{ r: 4 }}
-					/>
-					<Line
-						name="Spending"
-						type="monotone"
-						dataKey="spending"
-						stroke={COLOR.spending}
-						strokeWidth={2.2}
-						strokeDasharray="5 4"
-						dot={false}
+						fill="url(#nwFill)"
 						activeDot={{ r: 4 }}
 					/>
 				</ComposedChart>

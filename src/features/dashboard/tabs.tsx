@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { buildTransactions, fmt, groupAccountsByType, RANGES, sliceCategories, type AccountDisplay, type AccountTypeGroup, type RangeKey, type Slice, type Transaction, type View, type ViewKey } from "./data";
-import { BarChart, DualLineChart, PieChart } from "./charts";
+import { BarChart, NetWorthChart, PieChart } from "./charts";
 import { ModalShell } from "./modals";
 import { AddAccountModal, ManualAccountForm, type EditingAccount } from "./AddAccountModal";
 import { AddTransactionModal, type EditingTransaction } from "./AddTransactionModal";
@@ -145,6 +145,11 @@ export function DashboardTab({
 		() => sliceCategories(v.categoriesByMonth, slice.months),
 		[v.categoriesByMonth, slice.months]
 	);
+	// Net-worth points sliced to the active timeframe, same as slice.months.
+	const netWorthSlice = useMemo(
+		() => v.netWorth.slice(-RANGES[range].months),
+		[v.netWorth, range]
+	);
 	const totalCategorySpend = categories.reduce((a, b) => a + b.v, 0) || 1;
 
 	return (
@@ -179,7 +184,7 @@ export function DashboardTab({
 					<div>
 						<h2 className="panel-h">Activity</h2>
 						<p className="panel-sub">
-							{chart === "line" ? "Income vs spending over time." : null}
+							{chart === "line" ? "Net worth over time." : null}
 							{chart === "pie" ? "Where your money went, by category." : null}
 							{chart === "bar"
 								? "Income vs spending each month — made beside spent."
@@ -194,7 +199,7 @@ export function DashboardTab({
 								className={`seg-btn ${chart === "line" ? "active" : ""}`}
 								onClick={() => setChart("line")}
 							>
-								<SegIconLine /> <span>Lines</span>
+								<SegIconLine /> <span>Net worth</span>
 							</button>
 							<button
 								role="tab"
@@ -230,7 +235,7 @@ export function DashboardTab({
 				</div>
 
 				<div className="chart-stage" key={chart + view + range}>
-					{chart === "line" ? <DualLineChart months={slice.months} /> : null}
+					{chart === "line" ? <NetWorthChart points={netWorthSlice} /> : null}
 					{chart === "pie" ? <PieChart categories={categories} /> : null}
 					{chart === "bar" ? <BarChart months={slice.months} /> : null}
 				</div>

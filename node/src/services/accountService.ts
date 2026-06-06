@@ -13,6 +13,7 @@ import {
 	getAccountTransactionsPaged,
 	type TxFilter,
 } from "../repository/dashboardRepository.js";
+import { upsertAccountSnapshot } from "../repository/balanceSnapshotRepository.js";
 import { TablesInsert } from "../config/types.js";
 
 import { NotFoundError, AuthorizationError } from "../errors/index.js";
@@ -85,7 +86,22 @@ export const createAccount = async (
 	groupId?: number | null
 ) => {
 	const account = await newAccount(accountData, groupId);
+	// Seed the net-worth series with the opening balance (best-effort).
+	await snapshotBalance(account.id, account.balance_current);
 	return account;
+};
+
+// Record a balance snapshot without letting a failure break the account
+// mutation that triggered it — the net-worth series is non-critical.
+const snapshotBalance = async (accountId: number, balance: number | null) => {
+	try {
+		await upsertAccountSnapshot(accountId, balance);
+	} catch (e) {
+		console.warn("[accountService] balance snapshot failed", {
+			accountId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
 };
 
 // Update a manually-entered account. Only an owner or joint holder may edit, and
@@ -128,6 +144,8 @@ export const updateAccount = async (
 	if (!updated) {
 		throw new NotFoundError("Account", String(accountId));
 	}
+	// Capture the edited balance so the net-worth line steps on manual changes.
+	await snapshotBalance(updated.id, updated.balance_current);
 	return updated;
 };
 

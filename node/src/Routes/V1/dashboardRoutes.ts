@@ -16,6 +16,8 @@ import {
 	getGroupDashboardMonthly,
 	getUserDashboardCategories,
 	getGroupDashboardCategories,
+	getUserNetWorthSeries,
+	getGroupNetWorthSeries,
 	getMyTransactionsPaged,
 	getGroupTransactionsPaged,
 	getMemberTransactionsPaged,
@@ -38,7 +40,7 @@ router.get("/summary", async (req, res) => {
 	// Phase 1: fetch all personal data + group metadata in one parallel round-trip.
 	// Group info and member list come back here so we can branch on solo vs multi
 	// without a second waterfall.
-	const [user, group, members, myAccounts, myTxs, myMonthly, myCategories] =
+	const [user, group, members, myAccounts, myTxs, myMonthly, myCategories, myNetWorth] =
 		await Promise.all([
 			getUserDashboardInfo(userId),
 			getGroupDashboardInfo(groupId),
@@ -47,6 +49,7 @@ router.get("/summary", async (req, res) => {
 			getMyDashboardTransactions(userId, 15),
 			getUserDashboardMonthly(userId),
 			getUserDashboardCategories(userId),
+			getUserNetWorthSeries(userId),
 		]);
 
 	const isSolo = members.length <= 1;
@@ -75,6 +78,7 @@ router.get("/summary", async (req, res) => {
 			...m,
 			monthly: myMonthly,
 			categories: myCategories,
+			net_worth: myNetWorth,
 		}));
 
 		res.status(200).json({
@@ -89,6 +93,8 @@ router.get("/summary", async (req, res) => {
 			group_monthly: myMonthly,
 			my_categories: myCategories,
 			group_categories: myCategories,
+			my_net_worth: myNetWorth,
+			group_net_worth: myNetWorth,
 		});
 		return;
 	}
@@ -96,12 +102,13 @@ router.get("/summary", async (req, res) => {
 	// Multi-member group: fetch group-aggregated slices while also enriching each
 	// member with their own monthly/category data. The requesting user's data is
 	// already in hand from Phase 1 — reuse it instead of re-fetching.
-	const [gAccounts, gTxs, gMonthly, gCategories, membersWithData] =
+	const [gAccounts, gTxs, gMonthly, gCategories, gNetWorth, membersWithData] =
 		await Promise.all([
 			getGroupDashboardAccounts(groupId),
 			getGroupDashboardTransactions(groupId, 15),
 			getGroupDashboardMonthly(groupId),
 			getGroupDashboardCategories(groupId),
+			getGroupNetWorthSeries(groupId),
 			Promise.all(
 				members.map(async (m) => {
 					if (m.id === userId) {
@@ -109,13 +116,15 @@ router.get("/summary", async (req, res) => {
 							...m,
 							monthly: myMonthly,
 							categories: myCategories,
+							net_worth: myNetWorth,
 						};
 					}
-					const [monthly, categories] = await Promise.all([
+					const [monthly, categories, netWorth] = await Promise.all([
 						getUserDashboardMonthly(m.id),
 						getUserDashboardCategories(m.id),
+						getUserNetWorthSeries(m.id),
 					]);
-					return { ...m, monthly, categories };
+					return { ...m, monthly, categories, net_worth: netWorth };
 				})
 			),
 		]);
@@ -132,6 +141,8 @@ router.get("/summary", async (req, res) => {
 		group_monthly: gMonthly,
 		my_categories: myCategories,
 		group_categories: gCategories,
+		my_net_worth: myNetWorth,
+		group_net_worth: gNetWorth,
 	});
 });
 

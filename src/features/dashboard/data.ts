@@ -8,6 +8,11 @@ export type Month = { m: string; key: string; inc: number; spend: number };
 
 export type Category = { name: string; v: number; c: string };
 
+// One net-worth point per month, mirroring Month's `m`/`key` so it slices to a
+// timeframe the same way. `netWorth` is assets − liabilities as of that month,
+// computed server-side from per-account balance snapshots.
+export type NetWorthPoint = { m: string; key: string; netWorth: number };
+
 // One spending-by-category row for a single month ("Mon YYYY"), as returned by
 // the dashboard summary over a rolling 12-month window. Aggregated client-side
 // into Category[] for whatever timeframe the user selects — see sliceCategories.
@@ -38,6 +43,9 @@ export type View = {
 	// timeframe-specific Category[] for the pie is derived on demand via
 	// sliceCategories(view.categoriesByMonth, slice.months).
 	categoriesByMonth: MonthlyCategory[];
+	// Net-worth-over-time points for the full recorded history; sliced to the
+	// active timeframe at render time, like `months`.
+	netWorth: NetWorthPoint[];
 	tx: Transaction[];
 };
 
@@ -173,6 +181,16 @@ function buildMonths(monthly: Array<{ month: string; income: number; spending: n
 	}));
 }
 
+// Convert the server's net-worth series into chart points. Coerce net_worth to a
+// number in case pg ever serializes the aggregate as a string.
+function buildNetWorth(series: Array<{ month: string; net_worth: number }>): NetWorthPoint[] {
+	return series.map((p) => ({
+		m: p.month.split(" ")[0],
+		key: p.month,
+		netWorth: Number(p.net_worth ?? 0),
+	}));
+}
+
 // Pass the per-month category rows through as-is (coercing totals to numbers, in
 // case pg ever serializes NUMERIC as a string). The timeframe roll-up into a
 // colored Category[] happens later in sliceCategories, once the active range is
@@ -238,6 +256,7 @@ export function buildDashboardView(summary: DashboardSummary, viewKey: string): 
 			role: "Group",
 			months: buildMonths(summary.group_monthly),
 			categoriesByMonth: buildMonthlyCategories(summary.group_categories),
+			netWorth: buildNetWorth(summary.group_net_worth),
 			tx: buildTransactions(summary.group_transactions, true),
 		};
 	}
@@ -249,6 +268,7 @@ export function buildDashboardView(summary: DashboardSummary, viewKey: string): 
 			role: "You",
 			months: buildMonths(summary.my_monthly),
 			categoriesByMonth: buildMonthlyCategories(summary.my_categories),
+			netWorth: buildNetWorth(summary.my_net_worth),
 			tx: buildTransactions(summary.my_transactions, false),
 		};
 	}
@@ -263,6 +283,7 @@ export function buildDashboardView(summary: DashboardSummary, viewKey: string): 
 		role: member?.role ? cap(member.role) : "Member",
 		months: buildMonths(member?.monthly ?? []),
 		categoriesByMonth: buildMonthlyCategories(member?.categories ?? []),
+		netWorth: buildNetWorth(member?.net_worth ?? []),
 		tx: buildTransactions(memberTxs, false),
 	};
 }

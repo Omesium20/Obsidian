@@ -7,6 +7,7 @@ const ALL_TABLES = [
 	"password_reset_tokens",
 	"refresh_tokens",
 	"invitations",
+	"account_balance_snapshots",
 	"account_transactions",
 	"account_members",
 	"account_group_visibility",
@@ -87,6 +88,40 @@ export async function seedAccount(
 			data.last_four,
 			data.is_active,
 		]
+	);
+	return res.rows[0];
+}
+
+/**
+ * Inserts a balance snapshot row with an explicit date, for building net-worth
+ * series fixtures across months. upsertAccountSnapshot only ever writes today's
+ * row, so tests that need past months insert directly here.
+ */
+export async function seedBalanceSnapshot(
+	accountId: number,
+	balance: number,
+	snapshotDate: string
+) {
+	const res = await pool.query(
+		`INSERT INTO account_balance_snapshots (account_id, balance, snapshot_date)
+		 VALUES ($1, $2, $3)
+		 RETURNING *`,
+		[accountId, balance, snapshotDate]
+	);
+	return res.rows[0];
+}
+
+/**
+ * Makes an account visible to a group (account_group_visibility), so the
+ * group-scoped net-worth/dashboard queries pick it up.
+ */
+export async function seedAccountGroupVisibility(accountId: number, groupId: number) {
+	const res = await pool.query(
+		`INSERT INTO account_group_visibility (account_id, group_id)
+		 VALUES ($1, $2)
+		 ON CONFLICT (account_id, group_id) DO NOTHING
+		 RETURNING *`,
+		[accountId, groupId]
 	);
 	return res.rows[0];
 }

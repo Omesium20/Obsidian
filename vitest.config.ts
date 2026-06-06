@@ -88,6 +88,15 @@ export default defineConfig({
 					],
 				},
 			},
+			{
+				test: {
+					name: "balanceSnapshots",
+					testTimeout: 60000,
+					include: [
+						"node/src/tests/repository/balanceSnapshotRepository.test.ts",
+					],
+				},
+			},
 		],
 	},
 });
