@@ -8,10 +8,10 @@ export type Month = { m: string; key: string; inc: number; spend: number };
 
 export type Category = { name: string; v: number; c: string };
 
-// One net-worth point per month, mirroring Month's `m`/`key` so it slices to a
-// timeframe the same way. `netWorth` is assets − liabilities as of that month,
-// computed server-side from per-account balance snapshots.
-export type NetWorthPoint = { m: string; key: string; netWorth: number };
+// One net-worth point per day. `m` is the short axis label ("Jun 12");
+// `netWorth` is assets − liabilities as of that day, computed server-side from
+// per-account balance snapshots (last-observation carry-forward).
+export type NetWorthPoint = { m: string; netWorth: number };
 
 // One spending-by-category row for a single month ("Mon YYYY"), as returned by
 // the dashboard summary over a rolling 12-month window. Aggregated client-side
@@ -73,14 +73,16 @@ export type GroupView = {
 
 export type RangeKey = "1M" | "3M" | "6M" | "1Y" | "5Y" | "ALL";
 
-export const RANGES: Record<RangeKey, { months: number; label: string }> = {
-	"1M": { months: 1, label: "Last month" },
-	"3M": { months: 3, label: "Last 3 months" },
-	"6M": { months: 6, label: "Last 6 months" },
-	"1Y": { months: 12, label: "Last 12 months" },
-	"5Y": { months: 60, label: "Last 5 years" },
-	// All time — slice(-Infinity) clamps to the start and returns every month.
-	"ALL": { months: Infinity, label: "All time" },
+// `months` slices the monthly income/spend/category data; `days` slices the
+// daily net-worth series. Both clamp to the start of the data via
+// slice(-Infinity) for "ALL".
+export const RANGES: Record<RangeKey, { months: number; days: number; label: string }> = {
+	"1M": { months: 1, days: 30, label: "Last month" },
+	"3M": { months: 3, days: 90, label: "Last 3 months" },
+	"6M": { months: 6, days: 180, label: "Last 6 months" },
+	"1Y": { months: 12, days: 365, label: "Last 12 months" },
+	"5Y": { months: 60, days: 1825, label: "Last 5 years" },
+	"ALL": { months: Infinity, days: Infinity, label: "All time" },
 };
 
 export type Slice = {
@@ -92,6 +94,20 @@ export type Slice = {
 
 export function sliceMonths(view: View, range: RangeKey): Slice {
 	const months = view.months.slice(-RANGES[range].months);
+	const inc = months.reduce((a, b) => a + b.inc, 0);
+	const spend = months.reduce((a, b) => a + b.spend, 0);
+	return { months, inc, spend, savings: inc - spend };
+}
+
+// The window immediately preceding the active timeframe, same length — the
+// baseline for "vs prior period" comparisons (e.g. the savings-rate KPI).
+// Returns null when there's nothing to compare against: an "ALL" range has no
+// before, and a history shorter than the range leaves the prior window empty.
+export function slicePriorMonths(view: View, range: RangeKey): Slice | null {
+	const n = RANGES[range].months;
+	if (!Number.isFinite(n)) return null;
+	const months = view.months.slice(-(2 * n), -n);
+	if (months.length === 0) return null;
 	const inc = months.reduce((a, b) => a + b.inc, 0);
 	const spend = months.reduce((a, b) => a + b.spend, 0);
 	return { months, inc, spend, savings: inc - spend };
@@ -181,14 +197,18 @@ function buildMonths(monthly: Array<{ month: string; income: number; spending: n
 	}));
 }
 
-// Convert the server's net-worth series into chart points. Coerce net_worth to a
-// number in case pg ever serializes the aggregate as a string.
-function buildNetWorth(series: Array<{ month: string; net_worth: number }>): NetWorthPoint[] {
-	return series.map((p) => ({
-		m: p.month.split(" ")[0],
-		key: p.month,
-		netWorth: Number(p.net_worth ?? 0),
-	}));
+// Convert the server's daily net-worth series into chart points. Coerce
+// net_worth to a number in case pg ever serializes the aggregate as a string.
+// Pin to local noon like formatTxDate so the displayed day never shifts across
+// timezones.
+function buildNetWorth(series: Array<{ date: string; net_worth: number }>): NetWorthPoint[] {
+	return series.map((p) => {
+		const d = new Date(p.date + "T12:00:00");
+		return {
+			m: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+			netWorth: Number(p.net_worth ?? 0),
+		};
+	});
 }
 
 // Pass the per-month category rows through as-is (coercing totals to numbers, in
@@ -205,7 +225,7 @@ function buildMonthlyCategories(
 	}));
 }
 
-function formatTxDate(isoDate: string): string {
+export function formatTxDate(isoDate: string): string {
 	// transaction_date arrives either as a date-only string ("2026-05-30") or, when
 	// pg serializes a DATE column through JSON, as a full ISO timestamp
 	// ("2026-05-30T05:00:00.000Z"). Take just the leading YYYY-MM-DD and pin it to

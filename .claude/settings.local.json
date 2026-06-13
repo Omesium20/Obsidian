@@ -38,7 +38,12 @@
       "PowerShell($ports = 3000,5173,54321,54322; foreach \\($p in $ports\\) { $r = Test-NetConnection -ComputerName 127.0.0.1 -Port $p -WarningAction SilentlyContinue -InformationLevel Quiet; \"port $p listening: $r\" })",
       "PowerShell(curl.exe -s -o NUL -w \"status=%{http_code}`n\" http://localhost:3000/api/v1/events)",
       "PowerShell(node verify-sse.mjs)",
-      "PowerShell(Remove-Item *)"
+      "PowerShell(Remove-Item *)",
+      "PowerShell($paths = @\\(\"C:\\\\Users\\\\Owner\\\\Terraform\",\"C:\\\\Program Files\\\\Terraform\",\"C:\\\\ProgramData\\\\chocolatey\\\\bin\",\"C:\\\\Users\\\\Owner\\\\scoop\\\\shims\",\"$env:LOCALAPPDATA\\\\Microsoft\\\\WinGet\\\\Packages\"\\); foreach \\($p in $paths\\) { if \\(Test-Path $p\\) { Get-ChildItem -Path $p -Recurse -Filter \"terraform.exe\" -ErrorAction SilentlyContinue | Select-Object FullName,LastWriteTime } })",
+      "PowerShell(Get-Command *)",
+      "Bash(xargs grep -l \"net.?worth\\\\|color.*neg\\\\|red\")",
+      "Bash(node generate.mjs)",
+      "Bash(node -e \"for \\(const f of ['marty-mauser.json','rachel-mauser.json','granty-boy-mauser.json']\\) { const c = JSON.parse\\(require\\('fs'\\).readFileSync\\(f\\)\\); const dates = c.override_accounts.flatMap\\(a=>a.transactions.map\\(t=>t.date_transacted\\)\\).sort\\(\\); console.log\\(f, 'dates', dates[0], '->', dates[dates.length-1] ?? 'n/a'\\); }\")"
     ]
   }
 }

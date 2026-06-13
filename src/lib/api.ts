@@ -19,7 +19,7 @@ export type DashboardSummary = {
 		role: string;
 		monthly: Array<{ month: string; income: number; spending: number }>;
 		categories: Array<{ month: string; category: string; total: number }>;
-		net_worth: Array<{ month: string; net_worth: number }>;
+		net_worth: Array<{ date: string; net_worth: number }>;
 	}>;
 	my_accounts: Array<{
 		id: number;
@@ -79,8 +79,8 @@ export type DashboardSummary = {
 	group_monthly: Array<{ month: string; income: number; spending: number }>;
 	my_categories: Array<{ month: string; category: string; total: number }>;
 	group_categories: Array<{ month: string; category: string; total: number }>;
-	my_net_worth: Array<{ month: string; net_worth: number }>;
-	group_net_worth: Array<{ month: string; net_worth: number }>;
+	my_net_worth: Array<{ date: string; net_worth: number }>;
+	group_net_worth: Array<{ date: string; net_worth: number }>;
 };
 
 export type TxPageFilter = "all" | "income" | "spend";
@@ -121,6 +121,34 @@ export type TransactionPageResult = {
 	showOwner: boolean;
 	summary: TransactionPageSummary;
 	monthly: TxMonthlyBucket[];
+};
+
+// One recurring outflow stream (subscription/bill) detected by Plaid, as served
+// by GET /plaid/recurring. Amounts are positive costs (money leaving the
+// account). `frequency` and `status` are Plaid enums (e.g. "MONTHLY", "MATURE").
+export type RecurringStream = {
+	stream_id: string;
+	account_id: number | null;
+	account_name: string | null;
+	description: string;
+	merchant_name: string | null;
+	category: string | null;
+	frequency: string;
+	average_amount: number | null;
+	last_amount: number | null;
+	first_date: string;
+	last_date: string;
+	predicted_next_date: string | null;
+	status: string;
+	// All-time net spend on this stream (positive) and the number of stored
+	// charges it was summed from — see recurringService.
+	total_spent: number;
+	charge_count: number;
+};
+
+export type RecurringStreamsResult = {
+	streams: RecurringStream[];
+	errors: Array<{ itemId: number; message: string }>;
 };
 
 export type AccountTransactionPageResult = {
@@ -466,6 +494,13 @@ export const api = {
 			last_synced_at: string | null;
 			errors?: Array<{ itemId: number; message: string }>;
 		}>("/api/v1/plaid/sync", { method: "POST" }),
+
+	// Recurring outflow streams (subscriptions) for the dashboard panel, scoped
+	// to the active view ("me", "group", or "member-{id}").
+	getRecurringStreams: (view: string) =>
+		request<RecurringStreamsResult>(
+			`/api/v1/plaid/recurring?view=${encodeURIComponent(view)}`
+		),
 
 	getSyncStatus: () =>
 		request<{ last_synced_at: string | null; is_syncing: boolean }>(

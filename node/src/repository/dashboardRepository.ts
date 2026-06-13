@@ -22,11 +22,10 @@ export interface DashboardMonthly {
 	spending: number;
 }
 
-// One net-worth point per calendar month, derived from per-account balance
-// snapshots (assets − liabilities). Oldest-to-newest, 'Mon YYYY' labels that
-// line up with DashboardMonthly so charts share an x-axis.
+// One net-worth point per day, derived from per-account balance snapshots
+// (assets − liabilities). Oldest-to-newest, 'YYYY-MM-DD' dates.
 export interface DashboardNetWorth {
-	month: string;
+	date: string;
 	net_worth: number;
 }
 
@@ -96,14 +95,29 @@ function amountClause(filter: TxFilter): string {
 	return "";
 }
 
+// Removing an account is a soft delete (accounts.is_active = false) that keeps
+// its transaction rows, so every transaction-reading query below joins accounts
+// and filters is_active — otherwise a removed account's history would keep
+// surfacing in lists, KPIs, charts, and category breakdowns. This mirrors the
+// is_active filter the account-list and net-worth queries already apply.
+
+// transactions.category stores Plaid's raw personal_finance_category.primary
+// taxonomy value verbatim (e.g. "FOOD_AND_DRINK", "GENERAL_MERCHANDISE", or
+// Plaid's own catch-all "OTHER"), or NULL for manual/uncategorized transactions.
+// Plaid's literal "OTHER" and the NULL/uncategorized bucket previously surfaced
+// as two separate "Other" slices on the spending pie chart; this expression
+// folds both into one "Other" label everywhere categories are read, while
+// leaving every other category value untouched.
+const CATEGORY_LABEL = `CASE WHEN t.category IS NULL OR UPPER(t.category) = 'OTHER' THEN 'Other' ELSE t.category END`;
+
 // Appends a category equality condition to `params` and returns the SQL fragment.
-// Matches COALESCE(t.category, 'Other') so the literal value "Other" selects
-// uncategorized rows — consistent with how categories are surfaced to the client.
+// Matches CATEGORY_LABEL so the merged "Other" label returned by the
+// category-list endpoints is what the filter compares against.
 // Returns "" (and leaves params untouched) when no category is requested.
 function categoryClause(category: string | undefined, params: unknown[]): string {
 	if (!category) return "";
 	params.push(category);
-	return ` AND COALESCE(t.category, 'Other') = $${params.length}`;
+	return ` AND ${CATEGORY_LABEL} = $${params.length}`;
 }
 
 // Case-insensitive text match over the human-readable fields shown as each row's
@@ -257,17 +271,25 @@ export const getMyTransactionsPaged = async (
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN accounts a ON akt.account_id = a.id
 				 JOIN users u ON u.id = t.user_id
-				 WHERE t.user_id = $1${cond}
+				 WHERE t.user_id = $1 AND a.is_active = true${cond}
 				 ORDER BY t.transaction_date DESC, t.id DESC
 				 LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
 				dataParams
 			),
 			pool.query(
-				`SELECT ${TX_AGGREGATE_SELECT} FROM transactions t WHERE t.user_id = $1${cond}`,
+				`SELECT ${TX_AGGREGATE_SELECT}
+					 FROM transactions t
+					 JOIN account_transactions akt ON t.id = akt.transaction_id
+					 JOIN accounts a ON akt.account_id = a.id
+					 WHERE t.user_id = $1 AND a.is_active = true${cond}`,
 				baseParams
 			),
 			pool.query(
-				`SELECT ${TX_MONTHLY_SELECT} FROM transactions t WHERE t.user_id = $1${cond}${TX_MONTHLY_GROUP}`,
+				`SELECT ${TX_MONTHLY_SELECT}
+					 FROM transactions t
+					 JOIN account_transactions akt ON t.id = akt.transaction_id
+					 JOIN accounts a ON akt.account_id = a.id
+					 WHERE t.user_id = $1 AND a.is_active = true${cond}${TX_MONTHLY_GROUP}`,
 				baseParams
 			),
 		]);
@@ -316,7 +338,7 @@ export const getGroupTransactionsPaged = async (
 				 JOIN accounts a ON akt.account_id = a.id
 				 JOIN account_group_visibility agv ON agv.account_id = a.id
 				 JOIN users u ON u.id = t.user_id
-				 WHERE agv.group_id = $1${cond}
+				 WHERE agv.group_id = $1 AND a.is_active = true${cond}
 				 ORDER BY t.transaction_date DESC, t.id DESC
 				 LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
 				dataParams
@@ -326,7 +348,8 @@ export const getGroupTransactionsPaged = async (
 				 FROM transactions t
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN account_group_visibility agv ON agv.account_id = akt.account_id
-				 WHERE agv.group_id = $1${cond}`,
+				 JOIN accounts a ON akt.account_id = a.id
+				 WHERE agv.group_id = $1 AND a.is_active = true${cond}`,
 				baseParams
 			),
 			pool.query(
@@ -334,7 +357,8 @@ export const getGroupTransactionsPaged = async (
 				 FROM transactions t
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN account_group_visibility agv ON agv.account_id = akt.account_id
-				 WHERE agv.group_id = $1${cond}${TX_MONTHLY_GROUP}`,
+				 JOIN accounts a ON akt.account_id = a.id
+				 WHERE agv.group_id = $1 AND a.is_active = true${cond}${TX_MONTHLY_GROUP}`,
 				baseParams
 			),
 		]);
@@ -383,7 +407,7 @@ export const getMemberTransactionsPaged = async (
 				 JOIN accounts a ON akt.account_id = a.id
 				 JOIN account_group_visibility agv ON agv.account_id = a.id
 				 JOIN users u ON u.id = t.user_id
-				 WHERE agv.group_id = $1 AND t.user_id = $2${cond}
+				 WHERE agv.group_id = $1 AND a.is_active = true AND t.user_id = $2${cond}
 				 ORDER BY t.transaction_date DESC, t.id DESC
 				 LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
 				dataParams
@@ -393,7 +417,8 @@ export const getMemberTransactionsPaged = async (
 				 FROM transactions t
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN account_group_visibility agv ON agv.account_id = akt.account_id
-				 WHERE agv.group_id = $1 AND t.user_id = $2${cond}`,
+				 JOIN accounts a ON akt.account_id = a.id
+				 WHERE agv.group_id = $1 AND a.is_active = true AND t.user_id = $2${cond}`,
 				baseParams
 			),
 			pool.query(
@@ -401,7 +426,8 @@ export const getMemberTransactionsPaged = async (
 				 FROM transactions t
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN account_group_visibility agv ON agv.account_id = akt.account_id
-				 WHERE agv.group_id = $1 AND t.user_id = $2${cond}${TX_MONTHLY_GROUP}`,
+				 JOIN accounts a ON akt.account_id = a.id
+				 WHERE agv.group_id = $1 AND a.is_active = true AND t.user_id = $2${cond}${TX_MONTHLY_GROUP}`,
 				baseParams
 			),
 		]);
@@ -427,9 +453,11 @@ export const getMemberTransactionsPaged = async (
 export const getMyTransactionCategories = async (userId: number): Promise<string[]> => {
 	try {
 		const res = await pool.query(
-			`SELECT DISTINCT COALESCE(t.category, 'Other') AS category
+			`SELECT DISTINCT ${CATEGORY_LABEL} AS category
 			 FROM transactions t
-			 WHERE t.user_id = $1
+			 JOIN account_transactions akt ON t.id = akt.transaction_id
+			 JOIN accounts a ON akt.account_id = a.id
+			 WHERE t.user_id = $1 AND a.is_active = true
 			 ORDER BY category ASC`,
 			[userId]
 		);
@@ -447,11 +475,12 @@ export const getMyTransactionCategories = async (userId: number): Promise<string
 export const getGroupTransactionCategories = async (groupId: number): Promise<string[]> => {
 	try {
 		const res = await pool.query(
-			`SELECT DISTINCT COALESCE(t.category, 'Other') AS category
+			`SELECT DISTINCT ${CATEGORY_LABEL} AS category
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN account_group_visibility agv ON agv.account_id = akt.account_id
-			 WHERE agv.group_id = $1
+			 JOIN accounts a ON akt.account_id = a.id
+			 WHERE agv.group_id = $1 AND a.is_active = true
 			 ORDER BY category ASC`,
 			[groupId]
 		);
@@ -472,11 +501,12 @@ export const getMemberTransactionCategories = async (
 ): Promise<string[]> => {
 	try {
 		const res = await pool.query(
-			`SELECT DISTINCT COALESCE(t.category, 'Other') AS category
+			`SELECT DISTINCT ${CATEGORY_LABEL} AS category
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN account_group_visibility agv ON agv.account_id = akt.account_id
-			 WHERE agv.group_id = $1 AND t.user_id = $2
+			 JOIN accounts a ON akt.account_id = a.id
+			 WHERE agv.group_id = $1 AND a.is_active = true AND t.user_id = $2
 			 ORDER BY category ASC`,
 			[groupId, memberId]
 		);
@@ -674,7 +704,7 @@ export const getMyDashboardTransactions = async (
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN accounts a ON akt.account_id = a.id
-			 WHERE t.user_id = $1
+			 WHERE t.user_id = $1 AND a.is_active = true
 			 ORDER BY t.transaction_date DESC, t.id DESC
 			 LIMIT $2`,
 			[userId, limit]
@@ -708,7 +738,7 @@ export const getGroupDashboardTransactions = async (
 			 JOIN accounts a ON akt.account_id = a.id
 			 JOIN account_group_visibility agv ON agv.account_id = a.id
 			 JOIN users u ON u.id = t.user_id
-			 WHERE agv.group_id = $1
+			 WHERE agv.group_id = $1 AND a.is_active = true
 			 ORDER BY t.transaction_date DESC, t.id DESC
 			 LIMIT $2`,
 			[groupId, limit]
@@ -739,7 +769,9 @@ export const getUserDashboardMonthly = async (userId: number): Promise<Dashboard
 			   COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0)::float AS income,
 			   COALESCE(SUM(CASE WHEN t.amount < 0 THEN ABS(t.amount) ELSE 0 END), 0)::float AS spending
 			 FROM transactions t
-			 WHERE t.user_id = $1
+			 JOIN account_transactions akt ON t.id = akt.transaction_id
+			 JOIN accounts a ON akt.account_id = a.id
+			 WHERE t.user_id = $1 AND a.is_active = true
 			 GROUP BY month_start, 1
 			 ORDER BY month_start`,
 			[userId]
@@ -771,7 +803,8 @@ export const getGroupDashboardMonthly = async (groupId: number): Promise<Dashboa
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN account_group_visibility agv ON agv.account_id = akt.account_id
-			 WHERE agv.group_id = $1
+			 JOIN accounts a ON akt.account_id = a.id
+			 WHERE agv.group_id = $1 AND a.is_active = true
 			 GROUP BY month_start, 1
 			 ORDER BY month_start`,
 			[groupId]
@@ -792,23 +825,26 @@ export const getGroupDashboardMonthly = async (groupId: number): Promise<Dashboa
 // Returns a per-month spending-by-category breakdown for a single user across
 // the full transaction history (the same months as getUserDashboardMonthly, so
 // the 'Mon YYYY' labels line up). Only outflow transactions (amount < 0) are
-// counted; amounts are stored as absolute values for display, and null
-// categories are bucketed under "Other". The frontend sums the rows whose month
-// falls inside the selected timeframe to build the pie chart — there is no
-// top-N cap here because the bounded Plaid category set keeps the row count
-// small (a handful of categories per month).
+// counted; amounts are stored as absolute values for display, and category
+// labels are normalized via CATEGORY_LABEL (null and Plaid's "OTHER" both
+// become "Other"). The frontend sums the rows whose month falls inside the
+// selected timeframe to build the pie chart — there is no top-N cap here
+// because the bounded Plaid category set keeps the row count small (a handful
+// of categories per month).
 export const getUserDashboardCategories = async (userId: number): Promise<DashboardMonthlyCategory[]> => {
 	try {
 		const res = await pool.query(
 			`SELECT
 			   TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'Mon YYYY') AS month,
 			   DATE_TRUNC('month', t.transaction_date) AS month_start,
-			   COALESCE(t.category, 'Other') AS category,
+			   ${CATEGORY_LABEL} AS category,
 			   SUM(ABS(t.amount))::float AS total
 			 FROM transactions t
-			 WHERE t.user_id = $1
+			 JOIN account_transactions akt ON t.id = akt.transaction_id
+			 JOIN accounts a ON akt.account_id = a.id
+			 WHERE t.user_id = $1 AND a.is_active = true
 			   AND t.amount < 0
-			 GROUP BY DATE_TRUNC('month', t.transaction_date), COALESCE(t.category, 'Other')
+			 GROUP BY DATE_TRUNC('month', t.transaction_date), ${CATEGORY_LABEL}
 			 ORDER BY month_start, total DESC`,
 			[userId]
 		);
@@ -834,14 +870,15 @@ export const getGroupDashboardCategories = async (groupId: number): Promise<Dash
 			`SELECT
 			   TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'Mon YYYY') AS month,
 			   DATE_TRUNC('month', t.transaction_date) AS month_start,
-			   COALESCE(t.category, 'Other') AS category,
+			   ${CATEGORY_LABEL} AS category,
 			   SUM(ABS(t.amount))::float AS total
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN account_group_visibility agv ON agv.account_id = akt.account_id
-			 WHERE agv.group_id = $1
+			 JOIN accounts a ON akt.account_id = a.id
+			 WHERE agv.group_id = $1 AND a.is_active = true
 			   AND t.amount < 0
-			 GROUP BY DATE_TRUNC('month', t.transaction_date), COALESCE(t.category, 'Other')
+			 GROUP BY DATE_TRUNC('month', t.transaction_date), ${CATEGORY_LABEL}
 			 ORDER BY month_start, total DESC`,
 			[groupId]
 		);
@@ -858,49 +895,49 @@ export const getGroupDashboardCategories = async (groupId: number): Promise<Dash
 	}
 };
 
-// Builds a monthly net-worth time series from per-account balance snapshots.
+// Builds a daily net-worth time series from per-account balance snapshots.
 // `scopeCte` is a SELECT that yields the in-view accounts as (id, type); the
 // three public functions below differ only in that scope (the user's accounts,
 // the group's shared accounts, or one member's group-shared accounts).
 //
-// Semantics: for each month from the first recorded snapshot through the current
-// month, take each account's latest snapshot on-or-before that month's end
-// (last-observation carry-forward, so an account that didn't update in a given
-// month keeps its prior balance rather than dropping to zero), then sum assets
-// minus liabilities — credit/loan balances subtract. If there are no snapshots
-// in scope, the bounds CTE yields NULL and generate_series returns no rows, so
-// the series is simply empty.
+// Semantics: for each day from the first recorded snapshot through today, take
+// each account's latest snapshot on-or-before that day (last-observation
+// carry-forward, so an account that didn't sync on a given day keeps its prior
+// balance rather than dropping to zero), then sum assets minus liabilities —
+// credit/loan balances subtract. If there are no snapshots in scope, the bounds
+// CTE yields NULL and generate_series returns no rows, so the series is simply
+// empty.
 const netWorthSeriesQuery = (scopeCte: string): string => `
 	WITH scope AS (${scopeCte}),
 	bounds AS (
-		SELECT date_trunc('month', MIN(s.snapshot_date)) AS first_month
+		SELECT MIN(s.snapshot_date) AS first_day
 		FROM account_balance_snapshots s
 		JOIN scope ON scope.id = s.account_id
 	),
-	months AS (
+	days AS (
 		SELECT generate_series(
-			(SELECT first_month FROM bounds),
-			date_trunc('month', NOW()),
-			interval '1 month'
-		) AS month_start
+			(SELECT first_day FROM bounds),
+			CURRENT_DATE,
+			interval '1 day'
+		)::date AS day
 	),
 	per AS (
-		SELECT m.month_start, sc.type,
+		SELECT d.day, sc.type,
 			(SELECT s.balance FROM account_balance_snapshots s
 			  WHERE s.account_id = sc.id
-			    AND s.snapshot_date < m.month_start + interval '1 month'
+			    AND s.snapshot_date <= d.day
 			  ORDER BY s.snapshot_date DESC LIMIT 1) AS bal
-		FROM months m CROSS JOIN scope sc
+		FROM days d CROSS JOIN scope sc
 	)
-	SELECT TO_CHAR(month_start, 'Mon YYYY') AS month,
+	SELECT TO_CHAR(day, 'YYYY-MM-DD') AS date,
 		COALESCE(SUM(CASE WHEN type IN ('credit', 'loan')
 			THEN -COALESCE(bal, 0) ELSE COALESCE(bal, 0) END), 0)::float AS net_worth
 	FROM per
-	GROUP BY month_start
-	ORDER BY month_start`;
+	GROUP BY day
+	ORDER BY day`;
 
-const mapNetWorthRows = (rows: { month: string; net_worth: number }[]): DashboardNetWorth[] =>
-	rows.map((r) => ({ month: r.month as string, net_worth: r.net_worth as number }));
+const mapNetWorthRows = (rows: { date: string; net_worth: number }[]): DashboardNetWorth[] =>
+	rows.map((r) => ({ date: r.date as string, net_worth: r.net_worth as number }));
 
 // Net-worth series scoped to every account the user personally holds (owner,
 // joint, or authorized_user) — the same scope as getMyDashboardAccounts.

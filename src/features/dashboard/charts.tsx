@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 import {
 	Area,
-	Bar,
-	BarChart as RBarChart,
 	CartesianGrid,
 	Cell,
 	ComposedChart,
@@ -25,9 +23,6 @@ import { fmt, type Category, type Month, type NetWorthPoint } from "./data";
 // theme-aware. Keep these in sync with the CSS tokens.
 const COLOR = {
 	income: "oklch(0.65 0.20 211)", // --brand (blue)
-	spending: "oklch(0.66 0.18 35)", // --cat-3 (orange)
-	saved: "oklch(0.70 0.17 152)", // green — net positive
-	overspent: "oklch(0.62 0.18 25)", // --danger (red) — net negative
 } as const;
 
 // Category token → concrete color, mirroring the --cat-* tokens.
@@ -86,6 +81,10 @@ export function NetWorthChart({ points }: { points: NetWorthPoint[] }) {
 	if (data.length === 0)
 		return <ChartEmpty label="Net worth history will appear as it's tracked." />;
 
+	// Daily points can run into the hundreds for longer ranges — thin the axis
+	// to roughly 8 labels rather than rendering one per day.
+	const tickInterval = Math.max(0, Math.floor(data.length / 8) - 1);
+
 	const tooltip = (p: TooltipContentProps) => {
 		if (!p.active || !p.payload?.length) return null;
 		const nw = Number(p.payload[0].value ?? 0);
@@ -108,7 +107,14 @@ export function NetWorthChart({ points }: { points: NetWorthPoint[] }) {
 						</linearGradient>
 					</defs>
 					<CartesianGrid vertical={false} strokeDasharray="0" className="rc-grid" />
-					<XAxis dataKey="month" tickLine={false} axisLine={false} tick={AXIS_TICK} dy={6} />
+					<XAxis
+						dataKey="month"
+						tickLine={false}
+						axisLine={false}
+						tick={AXIS_TICK}
+						dy={6}
+						interval={tickInterval}
+					/>
 					<YAxis
 						width={48}
 						tickLine={false}
@@ -278,75 +284,66 @@ export function PieChart({ categories }: { categories: Category[] }) {
 }
 
 // ============================================================
-// Made vs Spent per month — grouped bars (income beside spending)
+// Month cards — income vs spent for the current calendar month
+// and the three before it. Always the last 4 calendar months,
+// independent of the dashboard's timeframe selector; missing
+// months render as zeros. Bar heights share one scale across
+// all four cards so months compare at a glance.
 // ============================================================
-export function BarChart({ months }: { months: Month[] }) {
-	const data = useMemo(
-		() => months.map((m) => ({ month: m.m, income: m.inc, spending: m.spend, net: m.inc - m.spend })),
-		[months]
-	);
+export function MonthCards({ months }: { months: Month[] }) {
+	const cards = useMemo(() => {
+		// `key` matches the server's TO_CHAR 'Mon YYYY' labels ("Jun 2026"), which
+		// en-US short-month formatting reproduces exactly.
+		const byKey = new Map(months.map((m) => [m.key, m]));
+		const now = new Date();
+		const out = [];
+		for (let i = 3; i >= 0; i--) {
+			const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+			const key = d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+			const m = byKey.get(key);
+			out.push({
+				key,
+				label: d.toLocaleDateString("en-US", { month: "long" }),
+				year: d.getFullYear(),
+				inc: m?.inc ?? 0,
+				spend: m?.spend ?? 0,
+				current: i === 0,
+			});
+		}
+		return out;
+	}, [months]);
 
-	if (data.length === 0) return <ChartEmpty label="No activity in this period." />;
-
-	const tooltip = (p: TooltipContentProps) => {
-		if (!p.active || !p.payload?.length) return null;
-		const inc = Number(p.payload.find((d) => d.dataKey === "income")?.value ?? 0);
-		const spend = Number(p.payload.find((d) => d.dataKey === "spending")?.value ?? 0);
-		return (
-			<TipCard
-				title={String(p.label)}
-				rows={[
-					{ label: "Made", value: inc, color: COLOR.income },
-					{ label: "Spent", value: spend, color: COLOR.spending },
-					{ label: "Net", value: inc - spend, color: COLOR.saved, signed: true },
-				]}
-			/>
-		);
-	};
+	const max = Math.max(1, ...cards.flatMap((c) => [c.inc, c.spend]));
+	const barHeight = (v: number) => `${Math.max((v / max) * 100, v > 0 ? 4 : 0)}%`;
 
 	return (
-		<div className="chart-wrap">
-			<ResponsiveContainer width="100%" height={280}>
-				<RBarChart
-					data={data}
-					margin={{ top: 16, right: 16, bottom: 8, left: 4 }}
-					barGap={2}
-					barCategoryGap="35%"
-				>
-					<CartesianGrid vertical={false} className="rc-grid" />
-					<XAxis dataKey="month" tickLine={false} axisLine={false} tick={AXIS_TICK} dy={6} />
-					<YAxis
-						width={48}
-						tickLine={false}
-						axisLine={false}
-						tick={AXIS_TICK}
-						tickFormatter={yAxisTick}
-					/>
-					<Tooltip content={tooltip} cursor={{ fill: "var(--surface-2)" }} />
-					{/* Three series with no stackId render grouped side by side. barGap
-					    keeps the trio tight within a month; barCategoryGap spaces the
-					    months. Net is colored per-bar: green positive, red overspent. */}
-					<Bar name="Made" dataKey="income" fill={COLOR.income} radius={[3, 3, 3, 3]} maxBarSize={18} />
-					<Bar name="Spent" dataKey="spending" fill={COLOR.spending} radius={[3, 3, 3, 3]} maxBarSize={18} />
-					<Bar name="Net" dataKey="net" radius={[3, 3, 3, 3]} maxBarSize={18}>
-						{data.map((d) => (
-							<Cell key={d.month} fill={d.net >= 0 ? COLOR.saved : COLOR.overspent} />
-						))}
-					</Bar>
-				</RBarChart>
-			</ResponsiveContainer>
-
-			<div className="chart-legend">
-				<span className="legend-item">
-					<span className="legend-dot" style={{ background: COLOR.income }} /> Made
-				</span>
-				<span className="legend-item">
-					<span className="legend-dot" style={{ background: COLOR.spending }} /> Spent
-				</span>
-				<span className="legend-item">
-					<span className="legend-dot" style={{ background: COLOR.saved }} /> Net
-				</span>
-			</div>
+		<div className="month-cards">
+			{cards.map((c) => (
+				<div className={`mcard ${c.current ? "current" : ""}`} key={c.key}>
+					<div className="mcard-head">
+						<span className="mcard-month">{c.label}</span>
+						<span className="mcard-sub">{c.current ? "This month" : c.year}</span>
+					</div>
+					<div className="mcard-body">
+						<div className="mcard-bars" aria-hidden>
+							<span className="mcard-bar in" style={{ height: barHeight(c.inc) }} />
+							<span className="mcard-bar out" style={{ height: barHeight(c.spend) }} />
+						</div>
+						<div className="mcard-rows">
+							<div className="mcard-row">
+								<span className="mcard-dot in" />
+								<span className="mcard-row-l">Income</span>
+								<span className="mcard-row-v mono in">{fmt(c.inc)}</span>
+							</div>
+							<div className="mcard-row">
+								<span className="mcard-dot out" />
+								<span className="mcard-row-l">Spent</span>
+								<span className="mcard-row-v mono out">{fmt(c.spend)}</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			))}
 		</div>
 	);
 }

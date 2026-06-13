@@ -7,6 +7,7 @@ import { exchangePublicToken } from "../../services/plaid/itemService.js";
 import { exchangePublicTokenSchema } from "../../schemas/plaidSchemas.js";
 import {
 	findByGroupMembers,
+	findByUserId,
 	getDecryptedAccessToken,
 } from "../../repository/plaidItemRepository.js";
 import {
@@ -15,6 +16,7 @@ import {
 	getGroupSyncStatus,
 } from "../../repository/groupRepository.js";
 import { syncTransactions } from "../../services/plaid/transactionsSyncService.js";
+import { getRecurringOutflows } from "../../services/plaid/recurringService.js";
 import { refreshItemBalances } from "../../services/plaid/balanceRefreshService.js";
 import { publishToGroup } from "../../services/realtime/eventBus.js";
 
@@ -113,6 +115,40 @@ router.post("/sync", async (req, res) => {
 		last_synced_at: status.last_synced_at?.toISOString() ?? null,
 		...(errors.length > 0 && { errors }),
 	});
+});
+
+// Recurring outflow streams (subscriptions/bills) for the dashboard panel,
+// scoped to the same views the dashboard uses: "me" (default), "group", or
+// "member-{id}". Member items are taken from the caller's own group list, so a
+// member id outside the household simply yields no items — no separate
+// membership check needed.
+router.get("/recurring", async (req, res) => {
+	const { userId, groupId } = req.user!;
+	const view = typeof req.query.view === "string" ? req.query.view : "me";
+
+	let items;
+	if (view === "me") {
+		items = await findByUserId(userId);
+	} else if (!groupId) {
+		res.status(200).json({ streams: [], errors: [] });
+		return;
+	} else {
+		const groupItems = await findByGroupMembers(groupId);
+		if (view === "group") {
+			items = groupItems;
+		} else {
+			const memberMatch = /^member-(\d+)$/.exec(view);
+			if (!memberMatch) {
+				res.status(400).json({ message: "Invalid view" });
+				return;
+			}
+			const memberId = parseInt(memberMatch[1], 10);
+			items = groupItems.filter((i) => i.user_id === memberId);
+		}
+	}
+
+	const result = await getRecurringOutflows(items);
+	res.status(200).json(result);
 });
 
 router.get("/sync-status", async (req, res) => {

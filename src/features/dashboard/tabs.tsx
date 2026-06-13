@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { buildTransactions, fmt, groupAccountsByType, RANGES, sliceCategories, type AccountDisplay, type AccountTypeGroup, type RangeKey, type Slice, type Transaction, type View, type ViewKey } from "./data";
-import { BarChart, NetWorthChart, PieChart } from "./charts";
+import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { buildTransactions, fmt, formatTxDate, groupAccountsByType, RANGES, sliceCategories, slicePriorMonths, type AccountDisplay, type AccountTypeGroup, type RangeKey, type Slice, type Transaction, type View, type ViewKey } from "./data";
+import { MonthCards, NetWorthChart, PieChart } from "./charts";
 import { ModalShell } from "./modals";
 import { AddAccountModal, ManualAccountForm, type EditingAccount } from "./AddAccountModal";
 import { AddTransactionModal, type EditingTransaction } from "./AddTransactionModal";
 import type { ManualAccountType } from "./accountTaxonomy";
 import { IconBank, IconCard, IconLoan, IconInvest } from "../../components/icons";
-import { api, ApiError, type DashboardSummary, type TxPageFilter, type TransactionPageSummary, type TxRange, type TxMonthlyBucket } from "../../lib/api";
+import { api, ApiError, type DashboardSummary, type RecurringStream, type TxPageFilter, type TransactionPageSummary, type TxRange, type TxMonthlyBucket } from "../../lib/api";
 
-type ChartKind = "line" | "pie" | "bar";
+type ChartKind = "line" | "pie";
 
 // Icon per Plaid top-level account type, shown beside each account-type group so
 // the category reads at a glance. Falls back to the bank icon for any unmapped type.
@@ -29,7 +29,7 @@ function KPI({
 }: {
 	label: string;
 	value: string;
-	sub: string;
+	sub: ReactNode;
 	accent?: Accent;
 }) {
 	return (
@@ -41,23 +41,156 @@ function KPI({
 	);
 }
 
-function Insight({
-	tone,
-	title,
-	body,
-}: {
-	tone: "pos" | "neg" | "warn" | "info";
-	title: string;
-	body: string;
-}) {
+// Human labels for Plaid's recurring-stream frequency enum.
+const FREQ_LABELS: Record<string, string> = {
+	WEEKLY: "Weekly",
+	BIWEEKLY: "Every 2 weeks",
+	SEMI_MONTHLY: "Twice a month",
+	MONTHLY: "Monthly",
+	ANNUALLY: "Yearly",
+	UNKNOWN: "Recurring",
+};
+
+// Approximate charges per month by frequency, for the panel's monthly-cost
+// headline (13 weeks ≈ 3 months keeps the weekly factors exact-ish).
+const FREQ_PER_MONTH: Record<string, number> = {
+	WEEKLY: 13 / 3,
+	BIWEEKLY: 13 / 6,
+	SEMI_MONTHLY: 2,
+	MONTHLY: 1,
+	ANNUALLY: 1 / 12,
+	UNKNOWN: 1,
+};
+
+// "Mar 2024" — for the "since …" copy in a subscription's all-time detail.
+function formatMonthYear(isoDate: string): string {
+	const d = new Date((isoDate ?? "").slice(0, 10) + "T12:00:00");
+	if (Number.isNaN(d.getTime())) return "—";
+	return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+function SubscriptionRow({ s }: { s: RecurringStream }) {
+	// Click pins the all-time detail open; hover shows the same total as a tooltip.
+	const [open, setOpen] = useState(false);
+	const name = s.merchant_name || s.description;
+	const amount = s.average_amount ?? s.last_amount ?? 0;
+	const freq = FREQ_LABELS[s.frequency] ?? "Recurring";
+
 	return (
-		<li className={`insight insight-${tone}`}>
-			<span className="insight-dot" />
-			<div>
-				<div className="insight-t">{title}</div>
-				<div className="insight-b">{body}</div>
-			</div>
+		<li className="sub-li">
+			<button
+				type="button"
+				className="tx-li tx-li-btn"
+				onClick={() => setOpen((o) => !o)}
+				aria-expanded={open}
+				aria-label={`${name} — show all-time spend`}
+			>
+				<span className={`tx-tag ${txTagClass(name)}`}>{name[0]?.toUpperCase()}</span>
+				<div className="tx-li-meta">
+					<div className="tx-li-name">{name}</div>
+					<div className="tx-li-sub">
+						<span>{freq}</span>
+						{s.predicted_next_date ? (
+							<>
+								<span className="dot-sep">·</span>
+								<span>Next {formatTxDate(s.predicted_next_date)}</span>
+							</>
+						) : null}
+						{s.account_name ? (
+							<>
+								<span className="dot-sep">·</span>
+								<span>{s.account_name}</span>
+							</>
+						) : null}
+					</div>
+				</div>
+				<div className="tx-li-amt mono">{fmt(amount, { cents: true })}</div>
+			</button>
+			<span className="sub-tip mono" role="tooltip">
+				{fmt(s.total_spent, { cents: true })} all time
+			</span>
+			{open ? (
+				<div className="sub-detail">
+					You’ve spent{" "}
+					<strong className="mono">{fmt(s.total_spent, { cents: true })}</strong> on{" "}
+					{name} all time — {s.charge_count}{" "}
+					{s.charge_count === 1 ? "charge" : "charges"} since{" "}
+					{formatMonthYear(s.first_date)}.
+				</div>
+			) : null}
 		</li>
+	);
+}
+
+// Recurring outflow streams (subscriptions, bills) detected by Plaid from the
+// cadence of past transactions — see GET /plaid/recurring. Inflow streams
+// (payroll etc.) are excluded server-side; this panel is about recurring spend.
+function SubscriptionsPanel({ view, name }: { view: ViewKey; name: string }) {
+	const [streams, setStreams] = useState<RecurringStream[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [fetchError, setFetchError] = useState<string | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		setLoading(true);
+		setFetchError(null);
+		api
+			.getRecurringStreams(view)
+			.then((data) => {
+				if (cancelled) return;
+				setStreams(data.streams);
+				// Per-item failures (one dead bank link) still return the other
+				// banks' streams — surface them in the console, not the panel.
+				if (data.errors.length > 0) {
+					console.warn("[SubscriptionsPanel] partial fetch", data.errors);
+				}
+			})
+			.catch((err) => {
+				if (cancelled) return;
+				console.error("[SubscriptionsPanel] fetch failed", err);
+				setFetchError(err instanceof Error ? err.message : String(err));
+			})
+			.finally(() => { if (!cancelled) setLoading(false); });
+
+		return () => { cancelled = true; };
+	}, [view]);
+
+	// Normalize every stream to a per-month cost for the headline estimate.
+	const monthlyTotal = streams.reduce(
+		(sum, s) =>
+			sum +
+			(s.average_amount ?? s.last_amount ?? 0) * (FREQ_PER_MONTH[s.frequency] ?? 1),
+		0
+	);
+
+	return (
+		<section className="panel">
+			<div className="panel-head">
+				<div>
+					<h2 className="panel-h">Subscriptions</h2>
+					<p className="panel-sub">
+						{loading || streams.length === 0
+							? `Recurring charges for ${name}`
+							: `${streams.length} recurring · ≈ ${fmt(monthlyTotal)}/mo`}
+					</p>
+				</div>
+			</div>
+			{loading ? (
+				<div className="tx-loading">Loading…</div>
+			) : fetchError ? (
+				<div className="tx-loading" style={{ color: "oklch(0.55 0.18 25)" }}>
+					Failed to load: {fetchError}
+				</div>
+			) : streams.length === 0 ? (
+				<div className="tx-empty">No recurring charges detected yet.</div>
+			) : (
+				<ul className="tx-list">
+					{streams.slice(0, 15).map((s) => (
+						<SubscriptionRow key={s.stream_id} s={s} />
+					))}
+				</ul>
+			)}
+		</section>
 	);
 }
 
@@ -96,25 +229,6 @@ function SegIconPie() {
 	);
 }
 
-function SegIconBar() {
-	return (
-		<svg
-			width="14"
-			height="14"
-			viewBox="0 0 16 16"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="1.5"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-		>
-			<rect x="2" y="9" width="3" height="5" rx="0.5" />
-			<rect x="6.5" y="5" width="3" height="9" rx="0.5" />
-			<rect x="11" y="7" width="3" height="7" rx="0.5" />
-		</svg>
-	);
-}
-
 function txTagClass(cat: string): string {
 	const ch = (cat[0] || "X").toUpperCase().charCodeAt(0);
 	return `tx-${(ch % 6) + 1}`;
@@ -136,7 +250,27 @@ export function DashboardTab({
 	onViewAllTransactions: () => void;
 }) {
 	const [chart, setChart] = useState<ChartKind>("line");
-	const savingsRate = slice.inc > 0 ? (slice.savings / slice.inc) * 100 : 0;
+	const hasIncome = slice.inc > 0;
+	const savingsRate = hasIncome ? (slice.savings / slice.inc) * 100 : 0;
+	// A savings *rate* only communicates anything while spending is within 2×
+	// income; past that (or with no income at all) the ratio explodes into
+	// numbers like −1900% — show "—" and let the sub-copy tell the real story.
+	const rateMeaningful = hasIncome && savingsRate >= -100;
+	// Headline when the rate degenerates: how many times over income the
+	// spending ran ("20× spent") — the multiple stays readable where the
+	// percentage would explode.
+	const spendMultiple = hasIncome ? slice.spend / slice.inc : 0;
+	// Baseline for the savings-rate KPI: the user's own rate over the window
+	// immediately before this one — a data-derived comparison rather than an
+	// arbitrary fixed target (revisit once budgets exist). Null when there's no
+	// prior window (ALL range, or history shorter than the range) or the prior
+	// window's rate is itself degenerate.
+	const prior = useMemo(() => slicePriorMonths(v, range), [v, range]);
+	const priorRate = prior && prior.inc > 0 ? (prior.savings / prior.inc) * 100 : null;
+	const rateDelta =
+		priorRate === null || priorRate < -100 ? null : savingsRate - priorRate;
+	// "Last 3 months" → "3 months", for "vs prior 3 months" copy.
+	const periodLabel = RANGES[range].label.toLowerCase().replace(/^last /, "");
 	const monthsLen = slice.months.length || 1;
 	// Spending-by-category rolled up to the selected timeframe, in lock-step with
 	// the line/bar charts (same months as the slice). Drives the pie and the
@@ -145,13 +279,12 @@ export function DashboardTab({
 		() => sliceCategories(v.categoriesByMonth, slice.months),
 		[v.categoriesByMonth, slice.months]
 	);
-	// Net-worth points sliced to the active timeframe, same as slice.months.
+	// Net-worth points sliced to the active timeframe — daily granularity, so
+	// this slices by days rather than months.
 	const netWorthSlice = useMemo(
-		() => v.netWorth.slice(-RANGES[range].months),
+		() => v.netWorth.slice(-RANGES[range].days),
 		[v.netWorth, range]
 	);
-	const totalCategorySpend = categories.reduce((a, b) => a + b.v, 0) || 1;
-
 	return (
 		<div className="db-content">
 			<div className="kpi-strip" key={view + range}>
@@ -173,11 +306,58 @@ export function DashboardTab({
 				/>
 				<KPI
 					label="Savings rate"
-					value={`${savingsRate.toFixed(1)}%`}
-					sub={savingsRate >= 20 ? "On pace · keep it up" : "Below 20% target"}
-					accent={savingsRate >= 20 ? "pos" : "warn"}
+					value={
+						rateMeaningful
+							? `${savingsRate.toFixed(1)}%`
+							: !hasIncome
+							? "—"
+							: `${spendMultiple >= 10 ? spendMultiple.toFixed(0) : spendMultiple.toFixed(1)}× spent`
+					}
+					sub={
+						!hasIncome ? (
+							slice.spend > 0 ? (
+								<>
+									Spent <span className="neg mono">{fmt(slice.spend)}</span> · no
+									income recorded
+								</>
+							) : (
+								"No activity this period"
+							)
+						) : !rateMeaningful ? (
+							<>
+								Spent <span className="neg mono">{fmt(slice.spend)}</span> vs{" "}
+								<span className="pos mono">{fmt(slice.inc)}</span> earned
+							</>
+						) : savingsRate < 0 ? (
+							"Spent more than earned"
+						) : rateDelta === null ? (
+							"Share of income kept"
+						) : Math.abs(rateDelta) < 0.5 ? (
+							`About even with prior ${periodLabel}`
+						) : (
+							`${rateDelta > 0 ? "Up" : "Down"} ${Math.abs(rateDelta).toFixed(1)} pts vs prior ${periodLabel}`
+						)
+					}
+					accent={
+						!hasIncome
+							? slice.spend > 0
+								? "neg"
+								: null
+							: savingsRate < 0
+							? "neg"
+							: rateDelta === null
+							? null
+							: rateDelta >= 0
+							? "pos"
+							: "warn"
+					}
 				/>
 			</div>
+
+			{/* Income vs spent for the last 4 calendar months — intentionally
+			    outside the timeframe selector's reach (always the same window),
+			    a fixed quick read on whether spending is outpacing income. */}
+			<MonthCards months={v.months} key={`mc-${view}`} />
 
 			<section className="panel chart-panel">
 				<div className="panel-head">
@@ -186,9 +366,6 @@ export function DashboardTab({
 						<p className="panel-sub">
 							{chart === "line" ? "Net worth over time." : null}
 							{chart === "pie" ? "Where your money went, by category." : null}
-							{chart === "bar"
-								? "Income vs spending each month — made, spent, and net."
-								: null}
 						</p>
 					</div>
 					<div className="panel-controls">
@@ -208,14 +385,6 @@ export function DashboardTab({
 								onClick={() => setChart("pie")}
 							>
 								<SegIconPie /> <span>Pie</span>
-							</button>
-							<button
-								role="tab"
-								aria-selected={chart === "bar"}
-								className={`seg-btn ${chart === "bar" ? "active" : ""}`}
-								onClick={() => setChart("bar")}
-							>
-								<SegIconBar /> <span>Bars</span>
 							</button>
 						</div>
 						<div className="seg seg-range" role="tablist" aria-label="Timeframe">
@@ -237,7 +406,6 @@ export function DashboardTab({
 				<div className="chart-stage" key={chart + view + range}>
 					{chart === "line" ? <NetWorthChart points={netWorthSlice} /> : null}
 					{chart === "pie" ? <PieChart categories={categories} /> : null}
-					{chart === "bar" ? <BarChart months={slice.months} /> : null}
 				</div>
 			</section>
 
@@ -261,36 +429,7 @@ export function DashboardTab({
 					</ul>
 				</section>
 
-				<section className="panel">
-					<div className="panel-head">
-						<div>
-							<h2 className="panel-h">Insights</h2>
-							<p className="panel-sub">Auto-generated for {v.name}</p>
-						</div>
-					</div>
-					<ul className="insight-list">
-						<Insight
-							tone="pos"
-							title="Spending dropped 12% this month"
-							body={`You spent ${fmt(Math.floor(slice.spend / monthsLen))} on average — below your 6-month baseline.`}
-						/>
-						<Insight
-							tone="info"
-							title={`Top category: ${categories[0]?.name ?? "—"}`}
-							body={`${fmt(categories[0]?.v ?? 0)} in ${RANGES[range].label.toLowerCase()}, ${(((categories[0]?.v ?? 0) / totalCategorySpend) * 100).toFixed(0)}% of all spending.`}
-						/>
-						<Insight
-							tone={savingsRate >= 20 ? "pos" : "warn"}
-							title={savingsRate >= 20 ? "Savings rate on track" : "Savings rate below target"}
-							body={`Currently ${savingsRate.toFixed(1)}%. Most households aim for 20% or more.`}
-						/>
-						<Insight
-							tone="info"
-							title="3 subscriptions due this week"
-							body="Apple, Spotify, and NYT auto-renew between Apr 30 and May 3."
-						/>
-					</ul>
-				</section>
+				<SubscriptionsPanel view={view} name={v.name} />
 			</div>
 		</div>
 	);

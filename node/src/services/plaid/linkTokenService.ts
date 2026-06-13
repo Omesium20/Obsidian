@@ -12,6 +12,9 @@ export const createLinkToken = async (
 			products: [Products.Transactions],
 			country_codes: [CountryCode.Us],
 			language: "en",
+			// Plaid defaults to 90 days of history on a new Item; request 180 so
+			// the initial sync pulls a full six months (max 730).
+			transactions: { days_requested: 180 },
 		});
 		return {
 			link_token: res.data.link_token,

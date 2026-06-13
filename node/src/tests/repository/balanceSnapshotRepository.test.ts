@@ -15,15 +15,17 @@ import {
 	getGroupNetWorthSeries,
 } from "../../repository/dashboardRepository.js";
 
-// YYYY-MM-DD for a Date (snapshot_date is a DATE column). Mid-month days are
-// used throughout so UTC conversion never shifts the month.
+// YYYY-MM-DD for a Date (snapshot_date is a DATE column).
 function iso(d: Date): string {
 	return d.toISOString().slice(0, 10);
 }
 
-// Mirrors the SQL TO_CHAR(month_start, 'Mon YYYY') label, e.g. "May 2026".
-function monthLabel(d: Date): string {
-	return d.toLocaleString("en-US", { month: "short", year: "numeric" });
+// YYYY-MM-DD for N days before today — used to seed snapshots at fixed offsets
+// from "now" so the series always lands within [first snapshot, today].
+function daysAgo(n: number): string {
+	const d = new Date();
+	d.setDate(d.getDate() - n);
+	return iso(d);
 }
 
 describe("balanceSnapshotRepository", () => {
@@ -100,23 +102,21 @@ describe("balanceSnapshotRepository", () => {
 			await seedAccountMember(checking.id, user.id, "owner");
 			await seedAccountMember(card.id, user.id, "owner");
 
-			const now = new Date();
-			const prev = new Date(now.getFullYear(), now.getMonth() - 1, 15);
-			const cur = new Date(now.getFullYear(), now.getMonth(), 10);
-
-			// Last month both accounts update; this month only the card updates, so
-			// the checking balance must carry forward into the current month.
-			await seedBalanceSnapshot(checking.id, 1000, iso(prev));
-			await seedBalanceSnapshot(card.id, 200, iso(prev));
-			await seedBalanceSnapshot(card.id, 250, iso(cur));
+			// Two days ago both accounts update; today only the card updates, so the
+			// checking balance must carry forward through yesterday and today.
+			await seedBalanceSnapshot(checking.id, 1000, daysAgo(2));
+			await seedBalanceSnapshot(card.id, 200, daysAgo(2));
+			await seedBalanceSnapshot(card.id, 250, daysAgo(0));
 
 			const series = await getUserNetWorthSeries(user.id);
 
-			expect(series).toHaveLength(2);
-			// prev: 1000 (asset) − 200 (liability) = 800
-			expect(series[0]).toEqual({ month: monthLabel(prev), net_worth: 800 });
-			// cur: 1000 carried forward − 250 = 750
-			expect(series[1]).toEqual({ month: monthLabel(cur), net_worth: 750 });
+			expect(series).toHaveLength(3);
+			// 2 days ago: 1000 (asset) − 200 (liability) = 800
+			expect(series[0]).toEqual({ date: daysAgo(2), net_worth: 800 });
+			// yesterday: both carried forward, still 800
+			expect(series[1]).toEqual({ date: daysAgo(1), net_worth: 800 });
+			// today: checking carried forward − 250 = 750
+			expect(series[2]).toEqual({ date: daysAgo(0), net_worth: 750 });
 		});
 
 		it("returns an empty series when the user has no snapshots", async () => {
@@ -151,8 +151,7 @@ describe("balanceSnapshotRepository", () => {
 			// Only the shared account is visible to the group.
 			await seedAccountGroupVisibility(shared.id, group.id);
 
-			const now = new Date();
-			const day = iso(new Date(now.getFullYear(), now.getMonth(), 5));
+			const day = daysAgo(0);
 			await seedBalanceSnapshot(shared.id, 5000, day);
 			await seedBalanceSnapshot(unshared.id, 9999, day);
 

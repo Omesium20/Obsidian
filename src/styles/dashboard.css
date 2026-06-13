@@ -267,6 +267,70 @@
   font-size: 12px;
   color: var(--ink-3);
 }
+/* Inline amounts inside a KPI sub-line (e.g. "Spent $X vs $Y earned"). */
+.kpi-sub .neg { color: var(--danger); font-weight: 500; }
+.kpi-sub .pos { color: oklch(0.55 0.16 165); font-weight: 500; }
+
+/* =====================================================
+   Month cards — income vs spent, last 4 calendar months
+   ===================================================== */
+.month-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  animation: fade-in 380ms ease;
+}
+@media (max-width: 920px) { .month-cards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) { .month-cards { grid-template-columns: 1fr; } }
+
+.mcard {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.mcard.current { border-color: color-mix(in oklch, var(--brand) 45%, var(--line)); }
+.mcard-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px;
+}
+.mcard-month {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.mcard-sub {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--ink-4);
+}
+.mcard-body { display: flex; align-items: flex-end; gap: 14px; }
+.mcard-bars {
+  display: flex; align-items: flex-end; gap: 5px;
+  height: 56px;
+  flex: 0 0 auto;
+}
+.mcard-bar {
+  width: 12px;
+  border-radius: 3px 3px 2px 2px;
+  min-height: 2px;
+}
+.mcard-bar.in  { background: oklch(0.66 0.16 165); } /* matches .kpi.pos green */
+.mcard-bar.out { background: var(--danger); }
+.mcard-rows {
+  display: flex; flex-direction: column; gap: 6px;
+  flex: 1; min-width: 0;
+}
+.mcard-row { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.mcard-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+.mcard-dot.in  { background: oklch(0.66 0.16 165); }
+.mcard-dot.out { background: var(--danger); }
+.mcard-row-l { color: var(--ink-3); }
+.mcard-row-v { margin-left: auto; font-size: 12.5px; font-weight: 600; }
+.mcard-row-v.in  { color: oklch(0.6 0.15 165); }
+.mcard-row-v.out { color: var(--danger); }
 
 /* =====================================================
    Panels
@@ -625,43 +689,6 @@
   white-space: nowrap;
 }
 .tx-li-amt.pos { color: oklch(0.55 0.16 165); }
-
-/* =====================================================
-   Insights
-   ===================================================== */
-.insight-list {
-  display: flex; flex-direction: column;
-  gap: 4px;
-}
-.insight {
-  display: grid;
-  grid-template-columns: 8px 1fr;
-  gap: 12px;
-  padding: 12px 4px;
-  border-bottom: 1px solid var(--line-soft);
-  align-items: flex-start;
-}
-.insight:last-child { border-bottom: 0; }
-.insight-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  margin-top: 6px;
-}
-.insight-pos  .insight-dot { background: oklch(0.62 0.16 165); }
-.insight-warn .insight-dot { background: oklch(0.72 0.16 60); }
-.insight-info .insight-dot { background: var(--brand); }
-.insight-neg  .insight-dot { background: var(--danger); }
-.insight-t {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
-}
-.insight-b {
-  font-size: 12px;
-  color: var(--ink-3);
-  line-height: 1.5;
-  margin-top: 2px;
-}
 
 /* =====================================================
    Accounts list

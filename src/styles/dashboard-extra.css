@@ -570,5 +570,42 @@
   outline-offset: -2px;
 }
 
+/* Subscriptions panel — all-time spend on hover (tooltip) or click (pinned
+   detail). Rows reuse the .tx-li/.tx-li-btn grid. */
+.sub-li { position: relative; }
+.sub-tip {
+  position: absolute;
+  top: 2px;
+  right: 8px;
+  transform: translateY(-100%);
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 7px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 5;
+  box-shadow: 0 4px 12px oklch(0 0 0 / 0.18);
+}
+.sub-li:hover .sub-tip,
+.sub-li:focus-within .sub-tip { opacity: 1; }
+/* The pinned detail already shows the total — drop the tooltip while open. */
+.sub-li:has(.tx-li-btn[aria-expanded="true"]) .sub-tip { display: none; }
+.sub-li .tx-li-btn[aria-expanded="true"] { border-bottom: 0; }
+.sub-detail {
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  /* Left edge lines up with the row's text column: 4px row padding + 36px tag + 12px gap. */
+  padding: 0 4px 12px 52px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.sub-detail strong { font-weight: 600; color: var(--ink); }
+.sub-li:last-child .sub-detail { border-bottom: 0; }
+
 /* Account transactions modal */
 .acct-tx-filter { margin-bottom: 16px; }
