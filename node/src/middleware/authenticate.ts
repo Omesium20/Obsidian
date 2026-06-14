@@ -11,6 +11,33 @@ declare module "express-serve-static-core" {
 	}
 }
 
+// Silent refresh: mint a new access token off the refresh cookie, re-set both
+// cookies, and attach the payload to the request.
+const refreshSession = async (
+	req: Request,
+	res: Response,
+	incomingRefreshToken: string
+) => {
+	const { accessToken, refreshToken, payload } =
+		await refreshTokens(incomingRefreshToken);
+
+	res.cookie("access_token", `Bearer ${accessToken}`, {
+		httpOnly: true,
+		secure: process.env.NODE_ENV === "production",
+		sameSite: "strict",
+		maxAge: 15 * 60 * 1000,
+	});
+
+	res.cookie("refreshToken", refreshToken, {
+		httpOnly: true,
+		secure: process.env.NODE_ENV === "production",
+		sameSite: "strict",
+		maxAge: 7 * 24 * 60 * 60 * 1000,
+	});
+
+	req.user = payload;
+};
+
 // authenticates route to ensure a valid user can call certain routes only.
 export const authenticate = async (
 	req: Request,
@@ -19,9 +46,18 @@ export const authenticate = async (
 ) => {
 	try {
 		const token = req.cookies?.access_token;
+		const incomingRefreshToken = req.cookies?.refreshToken;
 
 		if (!token) {
-			throw new AuthenticationError("No token provided");
+			// The access cookie's maxAge matches the JWT lifetime, so the browser
+			// evicts it the moment it expires — a missing access token with a
+			// refresh cookie present is the normal expiry case, not an anonymous
+			// request. Attempt the same silent refresh as the expired-token path.
+			if (!incomingRefreshToken) {
+				throw new AuthenticationError("No token provided");
+			}
+			await refreshSession(req, res, incomingRefreshToken);
+			return next();
 		}
 
 		//token ususally starts with "Bearer"
@@ -33,9 +69,8 @@ export const authenticate = async (
 			req.user = payload;
 			// Access token is still valid — bump activity so the inactivity
 			// timer reflects this request. Best-effort (never throws).
-			const refreshCookie = req.cookies?.refreshToken;
-			if (refreshCookie) {
-				await recordRefreshTokenActivity(refreshCookie);
+			if (incomingRefreshToken) {
+				await recordRefreshTokenActivity(incomingRefreshToken);
 			}
 			return next();
 		} catch (err) {
@@ -44,31 +79,13 @@ export const authenticate = async (
 			}
 
 			// Access token expired — attempt silent refresh
-			const incomingRefreshToken = req.cookies?.refreshToken;
 			if (!incomingRefreshToken) {
 				throw new AuthenticationError(
 					"Session expired, please log in again"
 				);
 			}
 
-			const { accessToken, refreshToken, payload } =
-				await refreshTokens(incomingRefreshToken);
-
-			res.cookie("access_token", `Bearer ${accessToken}`, {
-				httpOnly: true,
-				secure: process.env.NODE_ENV === "production",
-				sameSite: "strict",
-				maxAge: 15 * 60 * 1000,
-			});
-
-			res.cookie("refreshToken", refreshToken, {
-				httpOnly: true,
-				secure: process.env.NODE_ENV === "production",
-				sameSite: "strict",
-				maxAge: 7 * 24 * 60 * 60 * 1000,
-			});
-
-			req.user = payload;
+			await refreshSession(req, res, incomingRefreshToken);
 			next();
 		}
 	} catch (err) {
