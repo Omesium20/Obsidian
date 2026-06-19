@@ -60,6 +60,8 @@ export type AccountDisplay = {
 	tone: string;
 	type: string;
 	subtype: string | null;
+	isPrivate: boolean;
+	isJoint: boolean;
 };
 
 export type GroupView = {
@@ -319,6 +321,8 @@ export function buildAccountsForView(summary: DashboardSummary, viewKey: string)
 			tone: accountTone(a.type, a.subtype),
 			type: a.type,
 			subtype: a.subtype,
+			isPrivate: a.is_private ?? false,
+			isJoint: a.is_joint_declared ?? false,
 		}));
 	}
 
@@ -332,6 +336,8 @@ export function buildAccountsForView(summary: DashboardSummary, viewKey: string)
 			tone: accountTone(a.type, a.subtype),
 			type: a.type,
 			subtype: a.subtype,
+			isPrivate: a.is_private,
+			isJoint: a.is_joint_declared,
 		}));
 	}
 
@@ -347,6 +353,8 @@ export function buildAccountsForView(summary: DashboardSummary, viewKey: string)
 			tone: accountTone(a.type, a.subtype),
 			type: a.type,
 			subtype: a.subtype,
+			isPrivate: a.is_private ?? false,
+			isJoint: a.is_joint_declared ?? false,
 		}));
 }
 

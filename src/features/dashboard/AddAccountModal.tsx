@@ -173,22 +173,48 @@ export function ManualAccountForm({
 	// When true, the form body is replaced by a delete-confirmation warning.
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	// Set when the account has multiple joint co-owners and the server needs the
+	// deleter to choose who inherits it (the 400 carries details.candidates).
+	const [transferCandidates, setTransferCandidates] = useState<
+		Array<{ user_id: number; first_name: string; last_name: string }> | null
+	>(null);
+	const [newOwnerId, setNewOwnerId] = useState<number | null>(null);
 
 	const isDebt = type === "credit" || type === "loan";
 
-	const handleDelete = async () => {
+	const handleDelete = async (chosenOwnerId?: number) => {
 		if (!editing) return;
 		setError("");
 		setDeleting(true);
 		try {
-			await api.deleteAccount(editing.id);
+			await api.deleteAccount(editing.id, chosenOwnerId);
 			onDeleted?.();
 		} catch (err) {
-			setError(
-				err instanceof ApiError
-					? err.message
-					: "Couldn't remove the account. Please try again."
-			);
+			// Multiple co-owners → the server returns a candidate list so the user can
+			// pick who the account transfers to, then we retry with that choice.
+			const candidates =
+				err instanceof ApiError &&
+				err.details &&
+				typeof err.details === "object" &&
+				"candidates" in err.details
+					? (err.details as {
+							candidates: Array<{
+								user_id: number;
+								first_name: string;
+								last_name: string;
+							}>;
+					  }).candidates
+					: null;
+			if (candidates) {
+				setTransferCandidates(candidates);
+				setNewOwnerId(candidates[0]?.user_id ?? null);
+			} else {
+				setError(
+					err instanceof ApiError
+						? err.message
+						: "Couldn't remove the account. Please try again."
+				);
+			}
 			setDeleting(false);
 		}
 	};
@@ -247,15 +273,19 @@ export function ManualAccountForm({
 	// Delete confirmation — replaces the form body with a warning. The X in the
 	// corner still closes the whole modal (ModalShell's onClose).
 	if (confirmingDelete && editing) {
+		const choosing = transferCandidates != null;
 		return (
 			<ModalShell
-				title="Remove account?"
+				title={choosing ? "Transfer this account?" : "Remove account?"}
 				onClose={onClose}
 				footer={
 					<>
 						<button
 							className="btn btn-ghost"
-							onClick={() => setConfirmingDelete(false)}
+							onClick={() => {
+								setConfirmingDelete(false);
+								setTransferCandidates(null);
+							}}
 							disabled={deleting}
 						>
 							Cancel
@@ -263,21 +293,54 @@ export function ManualAccountForm({
 						<div style={{ flex: 1 }} />
 						<button
 							className="btn btn-danger-solid"
-							onClick={() => void handleDelete()}
-							disabled={deleting}
+							onClick={() =>
+								void handleDelete(choosing ? newOwnerId ?? undefined : undefined)
+							}
+							disabled={deleting || (choosing && newOwnerId == null)}
 						>
-							{deleting ? "Removing…" : "Remove account"}
+							{deleting
+								? choosing
+									? "Transferring…"
+									: "Removing…"
+								: choosing
+								? "Transfer & remove"
+								: "Remove account"}
 						</button>
 					</>
 				}
 			>
 				<div className="db-form">
-					<div className="db-warn">
-						Removing <strong>{editing.account_name}</strong> takes it off your
-						dashboard{readOnly ? " and stops syncing it from your bank going forward" : ""}.
-						Your existing <strong>transaction history is kept</strong> — past
-						activity still appears in your feed and totals.
-					</div>
+					{choosing ? (
+						<>
+							<div className="db-warn">
+								<strong>{editing.account_name}</strong> has more than one
+								co-owner. Choose who it should transfer to — they'll keep it as
+								a manual account (it stops auto-syncing), and you'll lose access.
+							</div>
+							<label className="db-field">
+								<span className="db-field-l">New owner</span>
+								<select
+									className="input"
+									value={newOwnerId ?? ""}
+									onChange={(e) => setNewOwnerId(Number(e.target.value))}
+								>
+									{transferCandidates!.map((c) => (
+										<option key={c.user_id} value={c.user_id}>
+											{c.first_name} {c.last_name}
+										</option>
+									))}
+								</select>
+							</label>
+						</>
+					) : (
+						<div className="db-warn">
+							Removing <strong>{editing.account_name}</strong> takes it off your
+							dashboard{readOnly ? " and stops syncing it from your bank going forward" : ""}.
+							If someone else co-owns it, the account transfers to them instead.
+							Your existing <strong>transaction history is kept</strong> — past
+							activity still appears in your feed and totals.
+						</div>
+					)}
 					{error ? <div className="field-error">{error}</div> : null}
 				</div>
 			</ModalShell>

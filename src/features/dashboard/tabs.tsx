@@ -6,7 +6,7 @@ import { AddAccountModal, ManualAccountForm, type EditingAccount } from "./AddAc
 import { AddTransactionModal, type EditingTransaction } from "./AddTransactionModal";
 import type { ManualAccountType } from "./accountTaxonomy";
 import { IconBank, IconCard, IconLoan, IconInvest } from "../../components/icons";
-import { api, ApiError, type DashboardSummary, type RecurringStream, type TxPageFilter, type TransactionPageSummary, type TxRange, type TxMonthlyBucket } from "../../lib/api";
+import { api, ApiError, type AccountMember, type DashboardSummary, type RecurringStream, type TxPageFilter, type TransactionPageSummary, type TxRange, type TxMonthlyBucket } from "../../lib/api";
 
 type ChartKind = "line" | "pie";
 
@@ -932,7 +932,13 @@ function AccountGroup({
 											{a.n[0]}
 										</span>
 										<div className="acct-meta">
-											<div className="acct-name">{a.n}</div>
+											<div className="acct-name">
+												{a.n}
+												{a.isJoint ? <span className="tag tag-sm">Joint</span> : null}
+												{a.isPrivate ? (
+													<span className="tag tag-sm tag-muted">Private</span>
+												) : null}
+											</div>
 											<div className="acct-sub">
 												{a.t} · {a.mask}
 											</div>
@@ -952,14 +958,219 @@ function AccountGroup({
 	);
 }
 
+// Owner/joint controls for a single account: household visibility (public vs
+// private), the user-declared "joint" flag, and co-owner management (link/unlink
+// an existing household member as a full joint holder — the de-dup path that
+// avoids a second Plaid link of the same account).
+function AccountSettings({
+	account,
+	members,
+	onChanged,
+}: {
+	account: DashboardSummary["my_accounts"][number];
+	members: DashboardSummary["members"];
+	onChanged: () => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const [isPrivate, setIsPrivate] = useState(account.is_private);
+	const [isJoint, setIsJoint] = useState(account.is_joint_declared);
+	const [coOwners, setCoOwners] = useState<AccountMember[] | null>(null);
+	const [addId, setAddId] = useState<number | "">("");
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState("");
+
+	// Lazily load the account's holders the first time the section is opened.
+	useEffect(() => {
+		if (!open || coOwners != null) return;
+		let cancelled = false;
+		api
+			.getAccountMembers(account.id)
+			.then((d) => { if (!cancelled) setCoOwners(d.members); })
+			.catch(() => { if (!cancelled) setCoOwners([]); });
+		return () => { cancelled = true; };
+	}, [open, coOwners, account.id]);
+
+	const run = async (fn: () => Promise<void>) => {
+		setError("");
+		setBusy(true);
+		try {
+			await fn();
+		} catch (e) {
+			setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const setVisibility = (priv: boolean) =>
+		void run(async () => {
+			await api.setAccountVisibility(account.id, priv ? "private" : "group");
+			setIsPrivate(priv);
+			onChanged();
+		});
+
+	const toggleJoint = () =>
+		void run(async () => {
+			await api.markAccountJoint(account.id, !isJoint);
+			setIsJoint(!isJoint);
+			onChanged();
+		});
+
+	const refreshMembers = async () => {
+		const d = await api.getAccountMembers(account.id);
+		setCoOwners(d.members);
+	};
+
+	const addCoOwner = () =>
+		void run(async () => {
+			if (addId === "") return;
+			await api.addCoOwner(account.id, Number(addId));
+			setAddId("");
+			await refreshMembers();
+			onChanged();
+		});
+
+	const removeCoOwner = (userId: number) =>
+		void run(async () => {
+			await api.removeCoOwner(account.id, userId);
+			await refreshMembers();
+			onChanged();
+		});
+
+	// Household members not already holders of this account — candidates to link.
+	const heldIds = new Set((coOwners ?? []).map((m) => m.user_id));
+	const linkable = members.filter((m) => !heldIds.has(m.id));
+	const canManageCoOwners = members.length > 1;
+
+	return (
+		<div className="acct-settings">
+			<button className="acct-settings-toggle" onClick={() => setOpen((o) => !o)}>
+				<span>Account settings</span>
+				<span className="acct-settings-tags">
+					{isPrivate ? <span className="tag tag-muted">Private</span> : null}
+					{isJoint ? <span className="tag">Joint</span> : null}
+					<span className="acct-settings-caret">{open ? "▲" : "▼"}</span>
+				</span>
+			</button>
+
+			{open ? (
+				<div className="acct-settings-body">
+					<div className="acct-settings-row">
+						<div className="acct-settings-l">
+							<div className="acct-settings-h">Visibility</div>
+							<div className="acct-settings-d">
+								{isPrivate
+									? "Only you can see this account."
+									: "Everyone in your household can see this account."}
+							</div>
+						</div>
+						<div className="seg">
+							<button
+								className={`seg-btn ${!isPrivate ? "active" : ""}`}
+								disabled={busy}
+								onClick={() => setVisibility(false)}
+							>
+								Household
+							</button>
+							<button
+								className={`seg-btn ${isPrivate ? "active" : ""}`}
+								disabled={busy}
+								onClick={() => setVisibility(true)}
+							>
+								Private
+							</button>
+						</div>
+					</div>
+
+					<div className="acct-settings-row">
+						<div className="acct-settings-l">
+							<div className="acct-settings-h">Joint account</div>
+							<div className="acct-settings-d">
+								Flag this as shared with another person.
+							</div>
+						</div>
+						<button
+							className={`chip ${isJoint ? "chip-on" : ""}`}
+							disabled={busy}
+							onClick={toggleJoint}
+						>
+							{isJoint ? "Joint" : "Mark joint"}
+						</button>
+					</div>
+
+					{canManageCoOwners ? (
+						<div className="acct-settings-row acct-settings-coowners">
+							<div className="acct-settings-l">
+								<div className="acct-settings-h">Co-owners</div>
+								<div className="acct-settings-d">
+									Linked members see this account on their own dashboard. It still
+									counts once for the household.
+								</div>
+								<ul className="acct-coowner-list">
+									{(coOwners ?? []).map((m) => (
+										<li key={m.user_id} className="acct-coowner">
+											<span>
+												{m.first_name} {m.last_name}
+												<span className="acct-coowner-role"> · {m.ownership_type}</span>
+											</span>
+											{m.ownership_type !== "owner" ? (
+												<button
+													className="link-btn"
+													disabled={busy}
+													onClick={() => removeCoOwner(m.user_id)}
+												>
+													Remove
+												</button>
+											) : null}
+										</li>
+									))}
+								</ul>
+								{linkable.length > 0 ? (
+									<div className="acct-coowner-add">
+										<select
+											className="input"
+											value={addId}
+											onChange={(e) =>
+												setAddId(e.target.value === "" ? "" : Number(e.target.value))
+											}
+										>
+											<option value="">Link a household member…</option>
+											{linkable.map((m) => (
+												<option key={m.id} value={m.id}>
+													{m.first_name} {m.last_name}
+												</option>
+											))}
+										</select>
+										<button
+											className="btn btn-sm btn-brand"
+											disabled={busy || addId === ""}
+											onClick={addCoOwner}
+										>
+											Link
+										</button>
+									</div>
+								) : null}
+							</div>
+						</div>
+					) : null}
+
+					{error ? <div className="field-error">{error}</div> : null}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
 function AccountTransactionsModal({
 	account,
 	accounts,
+	members,
 	onClose,
 	onChanged,
 }: {
 	account: AccountDisplay;
 	accounts: DashboardSummary["my_accounts"];
+	members: DashboardSummary["members"];
 	onClose: () => void;
 	onChanged: () => void;
 }) {
@@ -1056,6 +1267,14 @@ function AccountTransactionsModal({
 			}
 		>
 			<div className="acct-tx-modal">
+				{ownRaw ? (
+					<AccountSettings
+						account={ownRaw}
+						members={members}
+						onChanged={onChanged}
+					/>
+				) : null}
+
 				<div className="seg acct-tx-filter">
 					<button
 						className={`seg-btn ${filter === "all" ? "active" : ""}`}
@@ -1153,12 +1372,14 @@ export function TabAccounts({
 	view,
 	accounts,
 	myAccounts,
+	members,
 	onAccountAdded,
 }: {
 	v: View;
 	view: ViewKey;
 	accounts: AccountDisplay[];
 	myAccounts: DashboardSummary["my_accounts"];
+	members: DashboardSummary["members"];
 	onAccountAdded: () => void;
 }) {
 	const accts = accounts;
@@ -1259,6 +1480,7 @@ export function TabAccounts({
 				<AccountTransactionsModal
 					account={selected}
 					accounts={myAccounts}
+					members={members}
 					onClose={() => setSelected(null)}
 					onChanged={onAccountAdded}
 				/>

@@ -179,6 +179,7 @@ export function Dashboard() {
 						view={view}
 						accounts={currentAccounts}
 						myAccounts={summary.my_accounts}
+						members={summary.members}
 						onAccountAdded={() => {
 							void loadSummary();
 						}}

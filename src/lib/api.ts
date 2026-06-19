@@ -31,6 +31,8 @@ export type DashboardSummary = {
 		balance_current: number | null;
 		balance_available: number | null;
 		is_manual: boolean;
+		is_joint_declared: boolean;
+		is_private: boolean;
 	}>;
 	group_accounts: Array<{
 		id: number;
@@ -42,6 +44,8 @@ export type DashboardSummary = {
 		balance_current: number | null;
 		balance_available: number | null;
 		is_manual: boolean;
+		is_joint_declared: boolean;
+		is_private: boolean;
 		owner_id: number;
 		owner_first_name: string;
 		owner_last_name: string;
@@ -149,6 +153,18 @@ export type RecurringStream = {
 export type RecurringStreamsResult = {
 	streams: RecurringStream[];
 	errors: Array<{ itemId: number; message: string }>;
+};
+
+// A holder of an account, as served by GET /accounts/:id/members. Used by the
+// "manage co-owners" UI and the transfer-on-delete owner picker.
+export type AccountMember = {
+	id: number;
+	account_id: number;
+	user_id: number;
+	ownership_type: "owner" | "joint" | "authorized_user";
+	added_at: string | null;
+	first_name: string;
+	last_name: string;
 };
 
 export type AccountTransactionPageResult = {
@@ -477,12 +493,50 @@ export const api = {
 			body: JSON.stringify(data),
 		}),
 
-	// Remove an account (soft delete). Keeps its transaction history; for Plaid
-	// accounts it also stops future syncing.
-	deleteAccount: (id: number) =>
+	// Remove an account. With no co-owners this is a soft delete (history kept;
+	// Plaid sync stops). With joint co-owners it transfers ownership instead — to
+	// the sole co-owner automatically, or to `new_owner_user_id` when there are
+	// several (a 422 with `details.candidates` is returned if the pick is missing).
+	deleteAccount: (id: number, new_owner_user_id?: number) =>
 		request<{ message: string }>(`/api/v1/accounts/${id}`, {
 			method: "DELETE",
+			...(new_owner_user_id != null
+				? { body: JSON.stringify({ new_owner_user_id }) }
+				: {}),
 		}),
+
+	// Toggle an account's household visibility: "group" = public (everyone in the
+	// household sees it), "private" = only the holders see it on their own views.
+	setAccountVisibility: (id: number, visibility: "private" | "group") =>
+		request<{ message: string; account_id: number; visibility: string }>(
+			`/api/v1/accounts/${id}/visibility`,
+			{ method: "PUT", body: JSON.stringify({ visibility }) }
+		),
+
+	// Flag/unflag an account as a (user-declared) joint account.
+	markAccountJoint: (id: number, value: boolean) =>
+		request<{ message: string; account: { id: number; is_joint_declared: boolean } }>(
+			`/api/v1/accounts/${id}/joint`,
+			{ method: "PUT", body: JSON.stringify({ value }) }
+		),
+
+	// List an account's holders (owner + joint co-owners).
+	getAccountMembers: (id: number) =>
+		request<{ members: AccountMember[] }>(`/api/v1/accounts/${id}/members`),
+
+	// Link an existing household member to this account as a joint co-owner.
+	addCoOwner: (id: number, user_id: number) =>
+		request<{ message: string; account_id: number; user_id: number }>(
+			`/api/v1/accounts/${id}/members`,
+			{ method: "POST", body: JSON.stringify({ user_id }) }
+		),
+
+	// Remove a co-owner from an account.
+	removeCoOwner: (id: number, user_id: number) =>
+		request<{ message: string; account_id: number; user_id: number }>(
+			`/api/v1/accounts/${id}/members/${user_id}`,
+			{ method: "DELETE" }
+		),
 
 	triggerSync: () =>
 		request<{
