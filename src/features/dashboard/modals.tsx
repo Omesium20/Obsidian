@@ -242,7 +242,7 @@ function RoleOpt({
 	);
 }
 
-type SettingsSection = "account" | "household" | "notif" | "security";
+type SettingsSection = "account" | "household" | "security";
 
 export function SettingsModal({
 	onClose,
@@ -269,8 +269,6 @@ export function SettingsModal({
 	const originalName = `${user.first_name} ${user.last_name}`.trim();
 	const [name, setName] = useState(originalName);
 	const [email, setEmail] = useState(user.email);
-	const [notif, setNotif] = useState(true);
-	const [emailNotif, setEN] = useState(true);
 
 	// Only the household's creator may rename it (server enforces this too).
 	const isCreator = groupViews.find((g) => g.k === "me")?.role === "creator";
@@ -386,7 +384,6 @@ export function SettingsModal({
 						[
 							{ k: "account", l: "Account" },
 							{ k: "household", l: "Household" },
-							{ k: "notif", l: "Notifications" },
 							{ k: "security", l: "Security" },
 						] as { k: SettingsSection; l: string }[]
 					).map((s) => (
@@ -471,35 +468,11 @@ export function SettingsModal({
 						</>
 					) : null}
 
-					{section === "notif" ? (
-						<>
-							<ToggleRow
-								label="Push notifications"
-								sub="Alerts on your phone for large transactions."
-								value={notif}
-								onChange={setNotif}
-							/>
-							<ToggleRow
-								label="Email notifications"
-								sub="Weekly digest, due bills, and security events."
-								value={emailNotif}
-								onChange={setEN}
-							/>
-							<ToggleRow
-								label="Group activity"
-								sub="When household members add accounts or transactions."
-								value
-								onChange={() => {}}
-							/>
-						</>
-					) : null}
-
 					{section === "security" ? (
 						<>
 							<button className="db-link-row" onClick={onChangePassword}>
 								<div>
 									<div className="db-link-row-t">Change password</div>
-									<div className="db-link-row-d">Last changed 84 days ago.</div>
 								</div>
 								<IconArrow size={14} />
 							</button>
@@ -629,30 +602,3 @@ export function SettingsModal({
 	);
 }
 
-function ToggleRow({
-	label,
-	sub,
-	value,
-	onChange,
-}: {
-	label: string;
-	sub: string;
-	value: boolean;
-	onChange: (v: boolean) => void;
-}) {
-	return (
-		<div className="db-toggle-row">
-			<div>
-				<div className="db-toggle-l">{label}</div>
-				<div className="db-toggle-d">{sub}</div>
-			</div>
-			<button
-				className={`db-switch ${value ? "on" : ""}`}
-				onClick={() => onChange(!value)}
-				aria-pressed={value}
-			>
-				<span className="db-switch-thumb" />
-			</button>
-		</div>
-	);
-}
