@@ -4,7 +4,7 @@ import { useRouter, useQueryParam } from "../lib/router";
 import { api, ApiError } from "../lib/api";
 import { Wordmark } from "../components/Wordmark";
 
-type Step = 1 | 2;
+type Step = 1 | 2 | 3;
 
 interface LinkedAccount {
 	id: number;
@@ -46,7 +46,12 @@ export function Onboarding() {
 					<PlaidStep
 						institutions={institutions}
 						onLinked={(inst) => setInstitutions((prev) => [...prev, inst])}
-						onContinue={skipInvite ? goDashboard : () => setStep(2)}
+						onContinue={() => setStep(2)}
+					/>
+				) : step === 2 ? (
+					<ReviewStep
+						accounts={institutions.flatMap((i) => i.accounts)}
+						onContinue={skipInvite ? goDashboard : () => setStep(3)}
 					/>
 				) : (
 					<InviteStep
@@ -65,7 +70,9 @@ function Stepper({ step }: { step: Step }) {
 		<div className="ob-stepper">
 			<StepDot n={1} active={step >= 1} done={step > 1} label="Connect" />
 			<span className={`ob-stepper-line ${step > 1 ? "done" : ""}`} />
-			<StepDot n={2} active={step >= 2} done={false} label="Invite" />
+			<StepDot n={2} active={step >= 2} done={step > 2} label="Review" />
+			<span className={`ob-stepper-line ${step > 2 ? "done" : ""}`} />
+			<StepDot n={3} active={step >= 3} done={false} label="Invite" />
 		</div>
 	);
 }
@@ -229,6 +236,213 @@ function PlaidStep({
 						Continue →
 					</button>
 				) : null}
+			</div>
+		</section>
+	);
+}
+
+interface HouseholdMember {
+	id: number;
+	first_name: string;
+	last_name: string;
+}
+
+// After linking, let the user label each account before they reach the dashboard:
+//  - Private: visible only on their own views, hidden from the household.
+//  - Joint: a shared account. When the household already has other members, the
+//    user can link a co-owner right here from a dropdown (they'll see the account
+//    on their own dashboard, counted once for the household). If they're still
+//    solo, they'll invite the co-owner on the next step and link them later.
+function ReviewStep({
+	accounts,
+	onContinue,
+}: {
+	accounts: LinkedAccount[];
+	onContinue: () => void;
+}) {
+	const [privateIds, setPrivateIds] = useState<Set<number>>(new Set());
+	const [jointIds, setJointIds] = useState<Set<number>>(new Set());
+	// account id → set of member ids already linked as co-owners.
+	const [linked, setLinked] = useState<Map<number, Set<number>>>(new Map());
+	const [members, setMembers] = useState<HouseholdMember[]>([]);
+	const [busy, setBusy] = useState<Set<number>>(new Set());
+	const [error, setError] = useState("");
+
+	// Pull the household roster so joint accounts can be linked to a member on the
+	// spot. Excludes the current user (they already own the account).
+	useEffect(() => {
+		let cancelled = false;
+		api
+			.getDashboardSummary()
+			.then((s) => {
+				if (cancelled) return;
+				setMembers(
+					s.members
+						.filter((m) => m.id !== s.user.id)
+						.map((m) => ({ id: m.id, first_name: m.first_name, last_name: m.last_name }))
+				);
+			})
+			.catch(() => {
+				/* non-fatal: dropdown just won't have anyone to link */
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	const withBusy = async (id: number, fn: () => Promise<void>) => {
+		setError("");
+		setBusy((p) => new Set(p).add(id));
+		try {
+			await fn();
+		} catch (e) {
+			setError(
+				e instanceof ApiError ? e.message : "Couldn't save that change. Try again."
+			);
+		} finally {
+			setBusy((p) => {
+				const n = new Set(p);
+				n.delete(id);
+				return n;
+			});
+		}
+	};
+
+	const togglePrivate = (id: number) => {
+		const next = !privateIds.has(id);
+		void withBusy(id, async () => {
+			await api.setAccountVisibility(id, next ? "private" : "group");
+			setPrivateIds((p) => {
+				const n = new Set(p);
+				if (next) n.add(id);
+				else n.delete(id);
+				return n;
+			});
+		});
+	};
+
+	const toggleJoint = (id: number) => {
+		const next = !jointIds.has(id);
+		void withBusy(id, async () => {
+			await api.markAccountJoint(id, next);
+			setJointIds((p) => {
+				const n = new Set(p);
+				if (next) n.add(id);
+				else n.delete(id);
+				return n;
+			});
+		});
+	};
+
+	const linkMember = (accountId: number, memberId: number) => {
+		void withBusy(accountId, async () => {
+			await api.addCoOwner(accountId, memberId);
+			setLinked((prev) => {
+				const n = new Map(prev);
+				const set = new Set(n.get(accountId) ?? []);
+				set.add(memberId);
+				n.set(accountId, set);
+				return n;
+			});
+		});
+	};
+
+	const memberName = (id: number) => {
+		const m = members.find((x) => x.id === id);
+		return m ? `${m.first_name} ${m.last_name}` : "Member";
+	};
+
+	return (
+		<section className="ob-card">
+			<h1 className="ob-h1">Review your accounts</h1>
+			<p className="ob-sub">
+				Mark any account that's <strong>private</strong> (only you see it) or{" "}
+				<strong>joint</strong> (shared with someone else). You can change these
+				anytime from the account's settings.
+			</p>
+
+			{accounts.length === 0 ? (
+				<p className="ob-sub">No accounts to review.</p>
+			) : (
+				<ul className="ob-review">
+					{accounts.map((a) => {
+						const linkedIds = linked.get(a.id) ?? new Set<number>();
+						const linkable = members.filter((m) => !linkedIds.has(m.id));
+						return (
+							<li key={a.id} className="ob-review-item">
+								<div className="ob-review-main">
+									<div className="ob-review-info">
+										<span className="ob-linked-an">{a.account_name}</span>
+										<span className="ob-linked-at">{a.subtype ?? a.type}</span>
+										{a.last_four ? (
+											<span className="ob-linked-am">····{a.last_four}</span>
+										) : null}
+									</div>
+									<div className="ob-review-toggles">
+										<button
+											type="button"
+											className={`chip ${privateIds.has(a.id) ? "chip-on" : ""}`}
+											disabled={busy.has(a.id)}
+											onClick={() => togglePrivate(a.id)}
+										>
+											Private
+										</button>
+										<button
+											type="button"
+											className={`chip ${jointIds.has(a.id) ? "chip-on" : ""}`}
+											disabled={busy.has(a.id)}
+											onClick={() => toggleJoint(a.id)}
+										>
+											Joint
+										</button>
+									</div>
+								</div>
+
+								{jointIds.has(a.id) ? (
+									<div className="ob-review-link">
+										{[...linkedIds].map((mid) => (
+											<span key={mid} className="tag">
+												✓ {memberName(mid)}
+											</span>
+										))}
+										{members.length === 0 ? (
+											<span className="ob-review-hint">
+												Invite a co-owner on the next step, then link them from the
+												account's settings.
+											</span>
+										) : linkable.length > 0 ? (
+											<select
+												className="input"
+												value=""
+												disabled={busy.has(a.id)}
+												onChange={(e) => {
+													if (e.target.value) linkMember(a.id, Number(e.target.value));
+												}}
+											>
+												<option value="">Link a household member…</option>
+												{linkable.map((m) => (
+													<option key={m.id} value={m.id}>
+														{m.first_name} {m.last_name}
+													</option>
+												))}
+											</select>
+										) : (
+											<span className="ob-review-hint">All members linked.</span>
+										)}
+									</div>
+								) : null}
+							</li>
+						);
+					})}
+				</ul>
+			)}
+
+			{error ? <div className="field-error">{error}</div> : null}
+
+			<div className="ob-actions">
+				<button className="btn btn-brand" onClick={onContinue}>
+					Continue →
+				</button>
 			</div>
 		</section>
 	);
