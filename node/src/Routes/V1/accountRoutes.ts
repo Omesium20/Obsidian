@@ -6,8 +6,11 @@ import {
 	updateAccount,
 	deleteAccount,
 	removeAccount,
-	shareAccount,
-	unshareAccount,
+	setAccountVisibility,
+	markAccountJoint,
+	listAccountMembers,
+	addCoOwner,
+	removeCoOwner,
 } from "../../services/accountService.js";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorizeMember } from "../../middleware/authorizeMember.js";
@@ -17,7 +20,12 @@ import {
 	createAccountSchema,
 	updateAccountSchema,
 	deleteAccountSchema,
+	deleteAccountTransferSchema,
 	accountTxQuerySchema,
+	accountVisibilitySchema,
+	accountJointSchema,
+	addCoOwnerSchema,
+	memberParamSchema,
 } from "../../schemas/accountSchemas.js";
 
 const router = Router();
@@ -101,16 +109,18 @@ router.delete(
 	}
 );
 
-// Remove an account from the dashboard (soft delete — keeps transaction history;
-// for Plaid accounts it also stops future syncing). Works for manual and Plaid
-// accounts; owner/joint only, enforced in the service.
+// Remove an account from the dashboard. If the account has joint co-owners it is
+// transferred to one of them (and detached from Plaid) rather than soft-deleted;
+// with multiple co-owners the body must carry new_owner_user_id (the service
+// returns 422 with a candidate list otherwise). Owner/joint only.
 router.delete(
 	"/:id",
-	validate({ params: idParamSchema }),
+	validate({ params: idParamSchema, body: deleteAccountTransferSchema }),
 	async (req, res) => {
 		const deleted = await deleteAccount(
 			req.user!.userId,
-			Number(req.params.id)
+			Number(req.params.id),
+			req.body?.new_owner_user_id
 		);
 		res.status(200).json({
 			message: "Account removed",
@@ -119,32 +129,88 @@ router.delete(
 	}
 );
 
-// Share an account with the caller's current group
-router.post(
-	"/:id/share",
-	validate({ params: idParamSchema }),
+// Set an account's household visibility (public "group" vs "private")
+router.put(
+	"/:id/visibility",
+	validate({ params: idParamSchema, body: accountVisibilitySchema }),
 	async (req, res) => {
 		const accountId = Number(req.params.id);
-		await shareAccount(req.user!.userId, accountId, req.user!.groupId!);
+		await setAccountVisibility(
+			req.user!.userId,
+			accountId,
+			req.user!.groupId!,
+			req.body.visibility
+		);
 		res.status(200).json({
-			message: "Account shared with group",
+			message: "Account visibility updated",
 			account_id: accountId,
-			group_id: req.user!.groupId,
+			visibility: req.body.visibility,
 		});
 	}
 );
 
-// Unshare an account from the caller's current group
-router.delete(
-	"/:id/share",
+// Flag/unflag an account as a (user-declared) joint account
+router.put(
+	"/:id/joint",
+	validate({ params: idParamSchema, body: accountJointSchema }),
+	async (req, res) => {
+		const updated = await markAccountJoint(
+			req.user!.userId,
+			Number(req.params.id),
+			req.body.value
+		);
+		res.status(200).json({ message: "Account updated", account: updated });
+	}
+);
+
+// List an account's co-owners
+router.get(
+	"/:id/members",
 	validate({ params: idParamSchema }),
 	async (req, res) => {
+		const members = await listAccountMembers(
+			req.user!.userId,
+			Number(req.params.id)
+		);
+		res.status(200).json({ members });
+	}
+);
+
+// Link an existing household member to this account as a joint co-owner
+router.post(
+	"/:id/members",
+	validate({ params: idParamSchema, body: addCoOwnerSchema }),
+	async (req, res) => {
 		const accountId = Number(req.params.id);
-		await unshareAccount(req.user!.userId, accountId, req.user!.groupId!);
-		res.status(200).json({
-			message: "Account unshared from group",
+		await addCoOwner(
+			req.user!.userId,
+			accountId,
+			req.user!.groupId!,
+			req.body.user_id
+		);
+		res.status(201).json({
+			message: "Co-owner linked",
 			account_id: accountId,
-			group_id: req.user!.groupId,
+			user_id: req.body.user_id,
+		});
+	}
+);
+
+// Remove a co-owner from an account
+router.delete(
+	"/:id/members/:userId",
+	validate({ params: memberParamSchema }),
+	async (req, res) => {
+		const accountId = Number(req.params.id);
+		await removeCoOwner(
+			req.user!.userId,
+			accountId,
+			Number(req.params.userId)
+		);
+		res.status(200).json({
+			message: "Co-owner removed",
+			account_id: accountId,
+			user_id: Number(req.params.userId),
 		});
 	}
 );

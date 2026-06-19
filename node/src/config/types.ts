@@ -163,6 +163,7 @@ export type Database = {
           id: number
           institution_name: string | null
           is_active: boolean | null
+          is_joint_declared: boolean
           last_four: string | null
           plaid_account_id: string | null
           plaid_item_id: string | null
@@ -180,6 +181,7 @@ export type Database = {
           id?: number
           institution_name?: string | null
           is_active?: boolean | null
+          is_joint_declared?: boolean
           last_four?: string | null
           plaid_account_id?: string | null
           plaid_item_id?: string | null
@@ -197,6 +199,7 @@ export type Database = {
           id?: number
           institution_name?: string | null
           is_active?: boolean | null
+          is_joint_declared?: boolean
           last_four?: string | null
           plaid_account_id?: string | null
           plaid_item_id?: string | null

@@ -239,6 +239,8 @@ describe("dashboardRepository — transaction list", () => {
 			const other = await seedUser({ email: "other@example.com", username: "other" });
 			const myAccount = await seedAccount(user.id);
 			const otherAccount = await seedAccount(other.id, { last_four: "5678" });
+			await seedAccountMember(myAccount.id, user.id, "owner");
+			await seedAccountMember(otherAccount.id, other.id, "owner");
 
 			await seedTx(user.id, myAccount.id, { amount: -50, category: "groceries" });
 			await seedTx(other.id, otherAccount.id, { amount: -50, category: "travel" });

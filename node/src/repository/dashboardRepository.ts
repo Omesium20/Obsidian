@@ -59,6 +59,8 @@ export interface DashboardAccount {
 	balance_current: number | null;
 	balance_available: number | null;
 	is_manual: boolean;
+	is_joint_declared: boolean;
+	is_private: boolean;
 }
 
 export interface DashboardGroupAccount extends DashboardAccount {
@@ -238,8 +240,10 @@ function parseMonthlyBuckets(rows: Record<string, unknown>[]): TxMonthlyBucket[]
 	});
 }
 
-// Returns a paginated page of the requesting user's own transactions.
-// Joins account info for display (name, institution, last four digits).
+// Returns a paginated page of transactions across every account the user holds
+// (owner or joint) — scoped by account membership, so jointly-held accounts show
+// activity from any co-owner. Joins account info for display (name, institution,
+// last four digits).
 // Includes owner identity fields so the response shape matches DashboardGroupTransaction
 // and the frontend can render a consistent table regardless of view mode.
 // `filter` narrows to income-only (amount > 0), spend-only (amount < 0), or all.
@@ -271,7 +275,7 @@ export const getMyTransactionsPaged = async (
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN accounts a ON akt.account_id = a.id
 				 JOIN users u ON u.id = t.user_id
-				 WHERE t.user_id = $1 AND a.is_active = true${cond}
+				 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true${cond}
 				 ORDER BY t.transaction_date DESC, t.id DESC
 				 LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
 				dataParams
@@ -281,7 +285,7 @@ export const getMyTransactionsPaged = async (
 					 FROM transactions t
 					 JOIN account_transactions akt ON t.id = akt.transaction_id
 					 JOIN accounts a ON akt.account_id = a.id
-					 WHERE t.user_id = $1 AND a.is_active = true${cond}`,
+					 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true${cond}`,
 				baseParams
 			),
 			pool.query(
@@ -289,7 +293,7 @@ export const getMyTransactionsPaged = async (
 					 FROM transactions t
 					 JOIN account_transactions akt ON t.id = akt.transaction_id
 					 JOIN accounts a ON akt.account_id = a.id
-					 WHERE t.user_id = $1 AND a.is_active = true${cond}${TX_MONTHLY_GROUP}`,
+					 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true${cond}${TX_MONTHLY_GROUP}`,
 				baseParams
 			),
 		]);
@@ -446,9 +450,9 @@ export const getMemberTransactionsPaged = async (
 	}
 };
 
-// Returns the distinct set of categories present across the requesting user's
-// own transactions, alphabetically sorted, with uncategorized rows surfaced as
-// "Other". Powers the category-filter dropdown on the transaction list so the
+// Returns the distinct set of categories present across every account the user
+// holds (owner or joint), alphabetically sorted, with uncategorized rows surfaced
+// as "Other". Powers the category-filter dropdown on the transaction list so the
 // menu only ever offers categories that actually match something.
 export const getMyTransactionCategories = async (userId: number): Promise<string[]> => {
 	try {
@@ -457,7 +461,7 @@ export const getMyTransactionCategories = async (userId: number): Promise<string
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN accounts a ON akt.account_id = a.id
-			 WHERE t.user_id = $1 AND a.is_active = true
+			 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true
 			 ORDER BY category ASC`,
 			[userId]
 		);
@@ -636,18 +640,24 @@ export const getGroupDashboardMembers = async (
 // authorized_user). These are the accounts the user personally holds — not
 // scoped to group visibility, so this always reflects the user's full picture
 // regardless of what they've chosen to share with their group.
-export const getMyDashboardAccounts = async (userId: number): Promise<DashboardAccount[]> => {
+export const getMyDashboardAccounts = async (
+	userId: number,
+	groupId: number
+): Promise<DashboardAccount[]> => {
 	try {
 		const res = await pool.query(
 			`SELECT a.id, a.account_name, a.type, a.subtype, a.institution_name,
-			        a.last_four, a.balance_current, a.balance_available, (a.plaid_account_id IS NULL) AS is_manual
+			        a.last_four, a.balance_current, a.balance_available, (a.plaid_account_id IS NULL) AS is_manual,
+			        a.is_joint_declared,
+			        (agv.account_id IS NULL) AS is_private
 			 FROM accounts a
 			 JOIN account_members am ON a.id = am.account_id
+			 LEFT JOIN account_group_visibility agv ON agv.account_id = a.id AND agv.group_id = $2
 			 WHERE am.user_id = $1
 			   AND am.ownership_type IN ('owner', 'joint', 'authorized_user')
 			   AND a.is_active = true
 			 ORDER BY a.id`,
-			[userId]
+			[userId, groupId]
 		);
 		return res.rows;
 	} catch (e) {
@@ -668,6 +678,7 @@ export const getGroupDashboardAccounts = async (groupId: number): Promise<Dashbo
 		const res = await pool.query(
 			`SELECT a.id, a.account_name, a.type, a.subtype, a.institution_name,
 			        a.last_four, a.balance_current, a.balance_available, (a.plaid_account_id IS NULL) AS is_manual,
+			        a.is_joint_declared, false AS is_private,
 			        am.user_id AS owner_id,
 			        u.first_name AS owner_first_name,
 			        u.last_name AS owner_last_name
@@ -689,10 +700,10 @@ export const getGroupDashboardAccounts = async (groupId: number): Promise<Dashbo
 	}
 };
 
-// Returns the N most recent transactions for the user, ordered newest-first.
-// Used for the "recent activity" preview on the dashboard summary — not paginated.
-// Unlike getMyTransactionsPaged, this does not include owner identity fields
-// since all transactions here trivially belong to the requesting user.
+// Returns the N most recent transactions on every account the user holds (owner
+// or joint), ordered newest-first — so a jointly-held account's activity from a
+// co-owner appears here too. Used for the "recent activity" preview on the
+// dashboard summary — not paginated.
 export const getMyDashboardTransactions = async (
 	userId: number,
 	limit = 30
@@ -704,7 +715,7 @@ export const getMyDashboardTransactions = async (
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN accounts a ON akt.account_id = a.id
-			 WHERE t.user_id = $1 AND a.is_active = true
+			 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true
 			 ORDER BY t.transaction_date DESC, t.id DESC
 			 LIMIT $2`,
 			[userId, limit]
@@ -771,7 +782,7 @@ export const getUserDashboardMonthly = async (userId: number): Promise<Dashboard
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN accounts a ON akt.account_id = a.id
-			 WHERE t.user_id = $1 AND a.is_active = true
+			 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true
 			 GROUP BY month_start, 1
 			 ORDER BY month_start`,
 			[userId]
@@ -842,7 +853,7 @@ export const getUserDashboardCategories = async (userId: number): Promise<Dashbo
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN accounts a ON akt.account_id = a.id
-			 WHERE t.user_id = $1 AND a.is_active = true
+			 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true
 			   AND t.amount < 0
 			 GROUP BY DATE_TRUNC('month', t.transaction_date), ${CATEGORY_LABEL}
 			 ORDER BY month_start, total DESC`,

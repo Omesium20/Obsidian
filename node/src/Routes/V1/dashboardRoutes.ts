@@ -52,7 +52,7 @@ router.get("/summary", async (req, res) => {
 			getUserDashboardInfo(userId),
 			getGroupDashboardInfo(groupId),
 			getGroupDashboardMembers(groupId),
-			getMyDashboardAccounts(userId),
+			getMyDashboardAccounts(userId, groupId),
 			getMyDashboardTransactions(userId, 15),
 			getUserDashboardMonthly(userId),
 			getUserDashboardCategories(userId),

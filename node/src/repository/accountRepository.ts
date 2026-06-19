@@ -309,3 +309,150 @@ export const unshareAccountFromGroup = async (
 		});
 	}
 };
+
+// Flag (or clear) an account as a user-declared joint account. This is a pure
+// user assertion set during the linking session; it only drives whether the UI
+// surfaces the invite/link-a-co-owner actions.
+export const setAccountJoint = async (
+	accountId: number,
+	value: boolean
+): Promise<Account | undefined> => {
+	try {
+		const res = await pool.query(
+			`UPDATE accounts SET is_joint_declared = $2, updated_at = NOW()
+			WHERE id = $1
+			RETURNING *`,
+			[accountId, value]
+		);
+		return res.rows[0];
+	} catch (e) {
+		throw new DatabaseError("Failed to update joint flag", {
+			accountId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+export type AccountMemberWithUser = AccountMember & {
+	first_name: string;
+	last_name: string;
+};
+
+// All members of an account (owner + joint + authorized_user), with the holder's
+// name for the "manage co-owners" UI and the delete-transfer candidate picker.
+export const getAccountMembers = async (
+	accountId: number
+): Promise<AccountMemberWithUser[]> => {
+	try {
+		const res = await pool.query(
+			`SELECT am.*, u.first_name, u.last_name
+			FROM account_members am
+			JOIN users u ON u.id = am.user_id
+			WHERE am.account_id = $1
+			ORDER BY am.added_at ASC`,
+			[accountId]
+		);
+		return res.rows;
+	} catch (e) {
+		throw new DatabaseError("Failed to fetch account members", {
+			accountId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Attach a co-owner to an existing account (the de-dup path — the co-owner never
+// re-links the bank via Plaid). Idempotent via the unique (account_id, user_id)
+// constraint so a double-submit is a no-op.
+export const addAccountMember = async (
+	accountId: number,
+	userId: number,
+	ownershipType: "owner" | "joint" | "authorized_user" = "joint"
+): Promise<void> => {
+	try {
+		await pool.query(
+			`INSERT INTO account_members (account_id, user_id, ownership_type)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (account_id, user_id) DO NOTHING`,
+			[accountId, userId, ownershipType]
+		);
+	} catch (e) {
+		if (isPostgresError(e) && e.code === "23503") {
+			throw new ConflictError("Referenced account or user does not exist", {
+				constraint: e.constraint,
+			});
+		}
+		throw new DatabaseError("Failed to add account member", {
+			accountId,
+			userId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Remove a co-owner from an account. Returns the number of rows removed so the
+// service can distinguish "wasn't a member" from a successful removal.
+export const removeAccountMember = async (
+	accountId: number,
+	userId: number
+): Promise<number> => {
+	try {
+		const res = await pool.query(
+			`DELETE FROM account_members WHERE account_id = $1 AND user_id = $2`,
+			[accountId, userId]
+		);
+		return res.rowCount ?? 0;
+	} catch (e) {
+		throw new DatabaseError("Failed to remove account member", {
+			accountId,
+			userId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
+// Transfer ownership of an account from the deleting owner to a co-owner, in one
+// transaction: promote the new owner to 'owner', drop the old owner's membership,
+// and detach the account from the original linker's Plaid feed (null the Plaid
+// ids) so it survives as a manual account for the new owner — history intact, but
+// no longer auto-syncing under someone else's access token.
+export const transferAccountOwnership = async (
+	accountId: number,
+	fromUserId: number,
+	toUserId: number
+): Promise<Account | undefined> => {
+	const client = await pool.connect();
+	try {
+		await client.query("BEGIN");
+
+		await client.query(
+			`UPDATE account_members SET ownership_type = 'owner'
+			WHERE account_id = $1 AND user_id = $2`,
+			[accountId, toUserId]
+		);
+		await client.query(
+			`DELETE FROM account_members WHERE account_id = $1 AND user_id = $2`,
+			[accountId, fromUserId]
+		);
+		const res = await client.query(
+			`UPDATE accounts
+			SET plaid_account_id = NULL, plaid_item_id = NULL, user_id = $2, updated_at = NOW()
+			WHERE id = $1
+			RETURNING *`,
+			[accountId, toUserId]
+		);
+
+		await client.query("COMMIT");
+		return res.rows[0];
+	} catch (e) {
+		await client.query("ROLLBACK");
+		throw new DatabaseError("Failed to transfer account ownership", {
+			accountId,
+			fromUserId,
+			toUserId,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	} finally {
+		client.release();
+	}
+};

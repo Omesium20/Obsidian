@@ -115,6 +115,15 @@ export default defineConfig({
 					],
 				},
 			},
+			{
+				test: {
+					name: "accountCoownership",
+					testTimeout: 60000,
+					include: [
+						"node/src/tests/service/accountCoownership.test.ts",
+					],
+				},
+			},
 		],
 	},
 });
