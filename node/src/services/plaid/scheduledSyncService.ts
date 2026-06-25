@@ -12,6 +12,7 @@ import {
 import { syncTransactions } from "./transactionsSyncService.js";
 import { refreshItemBalances } from "./balanceRefreshService.js";
 import { publishToGroup } from "../realtime/eventBus.js";
+import { invalidateGroupSummaries } from "../cache/dashboardCache.js";
 
 async function syncGroup(groupId: number): Promise<void> {
 	const claimed = await claimGroupSync(groupId);
@@ -54,6 +55,10 @@ async function syncGroup(groupId: number): Promise<void> {
 
 	await releaseGroupSync(groupId);
 
+	// Drop the group's cached summaries BEFORE notifying, so the refetch that
+	// sync:complete triggers reads fresh data rather than a stale cache entry.
+	await invalidateGroupSummaries(groupId);
+
 	// Notify every open dashboard in this household so they refetch their own
 	// (per-user) summary. Best-effort — a no-op if nobody has it open.
 	publishToGroup(groupId, "sync:complete", {
@@ -95,7 +100,15 @@ export function startScheduledSync(): void {
 				console.error(`[scheduledSync] group=${group.id} uncaught`, e);
 				try {
 					await releaseGroupSync(group.id);
-				} catch {}
+				} catch (releaseErr) {
+					// Best-effort lock release after an already-failed sync. If
+					// this also fails, resetStaleGroupLocks clears the lock on a
+					// later tick — log and move on rather than crash the cron.
+					console.error(
+						`[scheduledSync] group=${group.id} lock release failed`,
+						releaseErr
+					);
+				}
 			}
 		}
 		console.log("[scheduledSync] Tick complete");

@@ -62,6 +62,7 @@ export type DashboardSummary = {
 		account_name: string;
 		institution_name: string | null;
 		last_four: string | null;
+		is_private: boolean;
 	}>;
 	group_transactions: Array<{
 		id: number;
@@ -75,6 +76,7 @@ export type DashboardSummary = {
 		account_name: string;
 		institution_name: string | null;
 		last_four: string | null;
+		is_private: boolean;
 		owner_id: number;
 		owner_first_name: string;
 		owner_last_name: string;

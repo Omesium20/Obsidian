@@ -673,8 +673,12 @@
   font-size: 13.5px;
   font-weight: 500;
   color: var(--ink);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 7px; min-width: 0;
 }
+/* Name text truncates with an ellipsis; an adjacent tag (e.g. "Private") stays
+   fully visible rather than being clipped by the truncation. */
+.tx-li-name-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx-li-name .tag { flex: none; }
 .tx-li-sub {
   font-size: 11.5px;
   color: var(--ink-4);

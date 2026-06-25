@@ -446,7 +446,12 @@ function TxRow({
 		<>
 			<span className={`tx-tag ${txTagClass(t.cat)}`}>{t.cat[0]}</span>
 			<div className="tx-li-meta">
-				<div className="tx-li-name">{t.name}</div>
+				<div className="tx-li-name">
+					<span className="tx-li-name-text">{t.name}</span>
+					{t.isPrivate ? (
+						<span className="tag tag-sm tag-muted">Private</span>
+					) : null}
+				</div>
 				<div className="tx-li-sub">
 					<span>{t.cat}</span>
 					<span className="dot-sep">·</span>

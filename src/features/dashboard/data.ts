@@ -33,6 +33,10 @@ export type Transaction = {
 	accountId: number;
 	dateISO: string;
 	categoryRaw: string | null;
+	// True when the transaction's account isn't shared with the household — drives
+	// the "Private" tag in personal transaction lists. Only ever set in personal
+	// views; group/member feeds carry only shared accounts.
+	isPrivate: boolean;
 };
 
 export type View = {
@@ -267,6 +271,7 @@ export function buildTransactions(
 			accountId: t.account_id,
 			dateISO: (t.transaction_date ?? "").slice(0, 10),
 			categoryRaw: t.category,
+			isPrivate: t.is_private ?? false,
 		};
 	});
 }

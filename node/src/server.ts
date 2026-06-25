@@ -2,6 +2,7 @@ import app from "./app.js";
 import { pool } from "./config/database.js";
 import { startScheduledSync } from "./services/plaid/scheduledSyncService.js";
 import { closeAllClients } from "./services/realtime/eventBus.js";
+import { closeRedis } from "./config/redis.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -53,6 +54,10 @@ async function startServer() {
 				// Close database pool
 				await pool.end();
 				console.log("✅ Database pool closed");
+
+				// Close Redis connections (no-op when Redis is disabled)
+				await closeRedis();
+				console.log("✅ Redis connections closed");
 
 				console.log("👋 Graceful shutdown complete");
 				process.exit(0);

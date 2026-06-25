@@ -43,7 +43,18 @@
       "PowerShell(Get-Command *)",
       "Bash(xargs grep -l \"net.?worth\\\\|color.*neg\\\\|red\")",
       "Bash(node generate.mjs)",
-      "Bash(node -e \"for \\(const f of ['marty-mauser.json','rachel-mauser.json','granty-boy-mauser.json']\\) { const c = JSON.parse\\(require\\('fs'\\).readFileSync\\(f\\)\\); const dates = c.override_accounts.flatMap\\(a=>a.transactions.map\\(t=>t.date_transacted\\)\\).sort\\(\\); console.log\\(f, 'dates', dates[0], '->', dates[dates.length-1] ?? 'n/a'\\); }\")"
+      "Bash(node -e \"for \\(const f of ['marty-mauser.json','rachel-mauser.json','granty-boy-mauser.json']\\) { const c = JSON.parse\\(require\\('fs'\\).readFileSync\\(f\\)\\); const dates = c.override_accounts.flatMap\\(a=>a.transactions.map\\(t=>t.date_transacted\\)\\).sort\\(\\); console.log\\(f, 'dates', dates[0], '->', dates[dates.length-1] ?? 'n/a'\\); }\")",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'feat\\(accounts\\): co-owner, visibility & transfer UI *)",
+      "Bash(git commit -q -m 'feat\\(onboarding\\): joint & private account labeling step *)",
+      "Bash(git commit -q -m 'refactor\\(settings\\): remove notifications section + password subtext *)",
+      "Bash(git push *)",
+      "Read(//c/tmp/**)",
+      "Bash(aws s3 *)",
+      "Bash(gunzip -c ct1.json.gz)",
+      "Bash(gunzip -c /tmp/ct2.json.gz)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(f\\\\\"{r['eventTime']}  {r['eventSource'].split\\('.'\\)[0]:14} {r['eventName']:22} by {r['userIdentity'].get\\('arn','?'\\)}  from {r.get\\('sourceIPAddress','?'\\)}\\\\\"\\) for r in d['Records']]\")",
+      "WebFetch(domain:plaid.com)"
     ]
   }
 }

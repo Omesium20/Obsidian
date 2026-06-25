@@ -3,6 +3,7 @@ import { pool } from "../../config/database.js";
 import { plaidClient } from "../../config/plaid.js";
 import { updateCursor } from "../../repository/plaidItemRepository.js";
 import { ExternalServiceError, DatabaseError } from "../../errors/index.js";
+import { describePlaidError } from "./plaidError.js";
 
 interface SyncResult {
 	added: number;
@@ -41,9 +42,7 @@ export const syncTransactions = async (
 			throw new ExternalServiceError(
 				"Plaid",
 				"Failed to sync transactions",
-				{
-					cause: e instanceof Error ? e.message : String(e),
-				}
+				describePlaidError(e)
 			);
 		}
 	}

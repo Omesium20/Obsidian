@@ -81,6 +81,11 @@ export interface DashboardTransaction {
 	account_name: string;
 	institution_name: string | null;
 	last_four: string | null;
+	// True when the transaction's account is not shared with the viewer's current
+	// group (no account_group_visibility row) — surfaced as a "Private" tag in the
+	// personal transaction list. Always false in group/member views, where every
+	// row already comes from a shared account.
+	is_private: boolean;
 }
 
 export interface DashboardGroupTransaction extends DashboardTransaction {
@@ -254,27 +259,32 @@ export const getMyTransactionsPaged = async (
 	filter: TxFilter,
 	category?: string,
 	range: TxRange = "all",
-	search?: string
+	search?: string,
+	groupId?: number
 ): Promise<PagedTransactions> => {
 	const offset = (page - 1) * limit;
 	// One WHERE for all three queries: category appends a param to baseParams,
 	// range/amount are literal fragments. The page query reuses baseParams plus
-	// limit/offset; the aggregate and monthly queries use baseParams as-is.
+	// the viewer's group (for the is_private flag) and limit/offset; the aggregate
+	// and monthly queries use baseParams as-is.
 	const baseParams: unknown[] = [userId];
 	const cond = amountClause(filter) + categoryClause(category, baseParams) + rangeClause(range) + searchClause(search, baseParams);
-	const limitIdx = baseParams.length + 1;
-	const offsetIdx = baseParams.length + 2;
-	const dataParams = [...baseParams, limit, offset];
+	const groupIdx = baseParams.length + 1;
+	const limitIdx = baseParams.length + 2;
+	const offsetIdx = baseParams.length + 3;
+	const dataParams = [...baseParams, groupId ?? null, limit, offset];
 	try {
 		const [dataRes, aggRes, monthlyRes] = await Promise.all([
 			pool.query(
 				`SELECT t.id, t.transaction_date, t.amount, t.description, t.category,
 				        t.merchant_name, t.entry_method, akt.account_id, a.account_name, a.institution_name, a.last_four,
-				        t.user_id AS owner_id, u.first_name AS owner_first_name, u.last_name AS owner_last_name
+				        t.user_id AS owner_id, u.first_name AS owner_first_name, u.last_name AS owner_last_name,
+				        CASE WHEN $${groupIdx}::int IS NULL THEN false ELSE (agv.account_id IS NULL) END AS is_private
 				 FROM transactions t
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN accounts a ON akt.account_id = a.id
 				 JOIN users u ON u.id = t.user_id
+				 LEFT JOIN account_group_visibility agv ON agv.account_id = a.id AND agv.group_id = $${groupIdx}
 				 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true${cond}
 				 ORDER BY t.transaction_date DESC, t.id DESC
 				 LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
@@ -336,7 +346,8 @@ export const getGroupTransactionsPaged = async (
 			pool.query(
 				`SELECT t.id, t.transaction_date, t.amount, t.description, t.category,
 				        t.merchant_name, t.entry_method, akt.account_id, a.account_name, a.institution_name, a.last_four,
-				        t.user_id AS owner_id, u.first_name AS owner_first_name, u.last_name AS owner_last_name
+				        t.user_id AS owner_id, u.first_name AS owner_first_name, u.last_name AS owner_last_name,
+				        false AS is_private
 				 FROM transactions t
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN accounts a ON akt.account_id = a.id
@@ -405,7 +416,8 @@ export const getMemberTransactionsPaged = async (
 			pool.query(
 				`SELECT t.id, t.transaction_date, t.amount, t.description, t.category,
 				        t.merchant_name, t.entry_method, akt.account_id, a.account_name, a.institution_name, a.last_four,
-				        t.user_id AS owner_id, u.first_name AS owner_first_name, u.last_name AS owner_last_name
+				        t.user_id AS owner_id, u.first_name AS owner_first_name, u.last_name AS owner_last_name,
+				        false AS is_private
 				 FROM transactions t
 				 JOIN account_transactions akt ON t.id = akt.transaction_id
 				 JOIN accounts a ON akt.account_id = a.id
@@ -706,19 +718,22 @@ export const getGroupDashboardAccounts = async (groupId: number): Promise<Dashbo
 // dashboard summary — not paginated.
 export const getMyDashboardTransactions = async (
 	userId: number,
-	limit = 30
+	limit = 30,
+	groupId?: number
 ): Promise<DashboardTransaction[]> => {
 	try {
 		const res = await pool.query(
 			`SELECT t.id, t.transaction_date, t.amount, t.description, t.category,
-			        t.merchant_name, t.entry_method, akt.account_id, a.account_name, a.institution_name, a.last_four
+			        t.merchant_name, t.entry_method, akt.account_id, a.account_name, a.institution_name, a.last_four,
+			        CASE WHEN $3::int IS NULL THEN false ELSE (agv.account_id IS NULL) END AS is_private
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN accounts a ON akt.account_id = a.id
+			 LEFT JOIN account_group_visibility agv ON agv.account_id = a.id AND agv.group_id = $3
 			 WHERE akt.account_id IN (SELECT am.account_id FROM account_members am WHERE am.user_id = $1) AND a.is_active = true
 			 ORDER BY t.transaction_date DESC, t.id DESC
 			 LIMIT $2`,
-			[userId, limit]
+			[userId, limit, groupId ?? null]
 		);
 		return res.rows;
 	} catch (e) {
@@ -743,7 +758,8 @@ export const getGroupDashboardTransactions = async (
 			        t.merchant_name, t.entry_method, akt.account_id, a.account_name, a.institution_name, a.last_four,
 			        t.user_id AS owner_id,
 			        u.first_name AS owner_first_name,
-			        u.last_name AS owner_last_name
+			        u.last_name AS owner_last_name,
+			        false AS is_private
 			 FROM transactions t
 			 JOIN account_transactions akt ON t.id = akt.transaction_id
 			 JOIN accounts a ON akt.account_id = a.id

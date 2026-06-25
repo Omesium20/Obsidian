@@ -25,6 +25,7 @@
 		"dotenv": "^17.2.3",
 		"express": "^5.1.0",
 		"gen": "^1.6.0",
+		"ioredis": "^5.11.1",
 		"jsonwebtoken": "^9.0.3",
 		"node-cron": "^4.2.1",
 		"nodemon": "^3.1.11",

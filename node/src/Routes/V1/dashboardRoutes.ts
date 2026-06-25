@@ -29,6 +29,7 @@ import {
 	getMemberTransactionCategories,
 } from "../../repository/dashboardRepository.js";
 import type { PagedTransactions } from "../../repository/dashboardRepository.js";
+import { getOrSetSummary } from "../../services/cache/dashboardCache.js";
 
 const router = Router();
 router.use(authenticate, authorizeMember);
@@ -44,6 +45,20 @@ router.get("/summary", async (req, res) => {
 		);
 	}
 
+	// Cache the assembled payload per (group, user). It's the heaviest read in
+	// the app (many parallel queries + a per-member enrichment fan-out), so a
+	// short-TTL cache absorbs repeated loads. Invalidated group-wide on sync
+	// (scheduledSyncService); other writes self-heal within the TTL.
+	const payload = await getOrSetSummary(groupId, userId, () =>
+		buildDashboardSummary(userId, groupId)
+	);
+
+	res.status(200).json(payload);
+});
+
+// Assembles the full /summary payload. Pure data-fetch + shaping (no req/res) so
+// it can sit behind the cache loader above.
+async function buildDashboardSummary(userId: number, groupId: number) {
 	// Phase 1: fetch all personal data + group metadata in one parallel round-trip.
 	// Group info and member list come back here so we can branch on solo vs multi
 	// without a second waterfall.
@@ -53,7 +68,7 @@ router.get("/summary", async (req, res) => {
 			getGroupDashboardInfo(groupId),
 			getGroupDashboardMembers(groupId),
 			getMyDashboardAccounts(userId, groupId),
-			getMyDashboardTransactions(userId, 15),
+			getMyDashboardTransactions(userId, 15, groupId),
 			getUserDashboardMonthly(userId),
 			getUserDashboardCategories(userId),
 			getUserNetWorthSeries(userId),
@@ -76,6 +91,7 @@ router.get("/summary", async (req, res) => {
 
 		const groupTxs = myTxs.map((t) => ({
 			...t,
+			is_private: false,
 			owner_id: userId,
 			owner_first_name: ownerFirst,
 			owner_last_name: ownerLast,
@@ -88,7 +104,7 @@ router.get("/summary", async (req, res) => {
 			net_worth: myNetWorth,
 		}));
 
-		res.status(200).json({
+		return {
 			user,
 			group,
 			members: membersWithData,
@@ -102,8 +118,7 @@ router.get("/summary", async (req, res) => {
 			group_categories: myCategories,
 			my_net_worth: myNetWorth,
 			group_net_worth: myNetWorth,
-		});
-		return;
+		};
 	}
 
 	// Multi-member group: fetch group-aggregated slices while also enriching each
@@ -136,7 +151,7 @@ router.get("/summary", async (req, res) => {
 			),
 		]);
 
-	res.status(200).json({
+	return {
 		user,
 		group,
 		members: membersWithData,
@@ -150,8 +165,8 @@ router.get("/summary", async (req, res) => {
 		group_categories: gCategories,
 		my_net_worth: myNetWorth,
 		group_net_worth: gNetWorth,
-	});
-});
+	};
+}
 
 const TX_PAGE_LIMIT = 25;
 
@@ -192,7 +207,8 @@ router.get(
 				filter,
 				category,
 				range,
-				search
+				search,
+				groupId ?? undefined
 			);
 			res.status(200).json(buildTxPageResponse(result, page, false));
 			return;

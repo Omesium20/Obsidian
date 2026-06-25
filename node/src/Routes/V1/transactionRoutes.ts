@@ -14,6 +14,7 @@ import {
 	updateTransactionSchema,
 	deleteTransactionSchema,
 } from "../../schemas/transactionSchemas.js";
+import { invalidateGroupSummaries } from "../../services/cache/dashboardCache.js";
 
 const router = Router();
 
@@ -36,6 +37,10 @@ router.post("/", validate({ body: createTransactionSchema }), async (req, res) =
 		{ ...txBody, user_id: req.user!.userId },
 		account_id
 	);
+	// The new transaction changes this user's dashboard slices (and the group
+	// aggregate). Clear before responding so the client's refetch reads fresh
+	// data rather than the cached pre-write summary.
+	await invalidateGroupSummaries(req.user!.groupId);
 	res.status(201).json({
 		message: "New Transaction created",
 		transaction: newTransaction,
@@ -54,6 +59,7 @@ router.patch(
 			txBody,
 			account_id
 		);
+		await invalidateGroupSummaries(req.user!.groupId);
 		res.status(200).json({
 			message: "Transaction updated",
 			transaction: updated,
@@ -64,6 +70,7 @@ router.patch(
 // Delete transaction
 router.delete("/", validate({ body: deleteTransactionSchema }), async (req, res) => {
 	const deletedData = await removeTransaction(req.user!.userId, req.body.id);
+	await invalidateGroupSummaries(req.user!.groupId);
 	res.status(200).json({
 		message: "Transaction deleted",
 		transaction: deletedData,

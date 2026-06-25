@@ -27,6 +27,7 @@ import {
 	addCoOwnerSchema,
 	memberParamSchema,
 } from "../../schemas/accountSchemas.js";
+import { invalidateGroupSummaries } from "../../services/cache/dashboardCache.js";
 
 const router = Router();
 
@@ -70,6 +71,9 @@ router.post("/", validate({ body: createAccountSchema }), async (req, res) => {
 		},
 		req.user!.groupId
 	);
+	// New account changes the group's dashboard (account lists, net worth).
+	// Clear before responding so the client's refetch reads fresh data.
+	await invalidateGroupSummaries(req.user!.groupId);
 	res.status(201).json({
 		message: "New Account created",
 		account: newAccount,
@@ -86,6 +90,7 @@ router.patch(
 			Number(req.params.id),
 			req.body
 		);
+		await invalidateGroupSummaries(req.user!.groupId);
 		res.status(200).json({
 			message: "Account updated",
 			account: updated,
@@ -102,6 +107,7 @@ router.delete(
 			req.user!.userId,
 			req.body.account_id
 		);
+		await invalidateGroupSummaries(req.user!.groupId);
 		res.status(200).json({
 			message: "Account deactivated",
 			account: deletedData,
@@ -122,6 +128,7 @@ router.delete(
 			Number(req.params.id),
 			req.body?.new_owner_user_id
 		);
+		await invalidateGroupSummaries(req.user!.groupId);
 		res.status(200).json({
 			message: "Account removed",
 			account: deleted,
@@ -141,6 +148,7 @@ router.put(
 			req.user!.groupId!,
 			req.body.visibility
 		);
+		await invalidateGroupSummaries(req.user!.groupId);
 		res.status(200).json({
 			message: "Account visibility updated",
 			account_id: accountId,
@@ -159,6 +167,7 @@ router.put(
 			Number(req.params.id),
 			req.body.value
 		);
+		await invalidateGroupSummaries(req.user!.groupId);
 		res.status(200).json({ message: "Account updated", account: updated });
 	}
 );
@@ -188,6 +197,7 @@ router.post(
 			req.user!.groupId!,
 			req.body.user_id
 		);
+		await invalidateGroupSummaries(req.user!.groupId);
 		res.status(201).json({
 			message: "Co-owner linked",
 			account_id: accountId,
@@ -207,6 +217,7 @@ router.delete(
 			accountId,
 			Number(req.params.userId)
 		);
+		await invalidateGroupSummaries(req.user!.groupId);
 		res.status(200).json({
 			message: "Co-owner removed",
 			account_id: accountId,
