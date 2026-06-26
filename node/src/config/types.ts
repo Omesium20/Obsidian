@@ -223,12 +223,10 @@ export type Database = {
           exported_at: string | null
           group_id: number | null
           id: number
-          ip_address: unknown
           new_data: Json | null
           old_data: Json | null
           operation: string
           record_id: number
-          session_id: string | null
           table_name: string
           user_id: number | null
         }
@@ -238,12 +236,10 @@ export type Database = {
           exported_at?: string | null
           group_id?: number | null
           id?: number
-          ip_address?: unknown
           new_data?: Json | null
           old_data?: Json | null
           operation: string
           record_id: number
-          session_id?: string | null
           table_name: string
           user_id?: number | null
         }
@@ -253,12 +249,10 @@ export type Database = {
           exported_at?: string | null
           group_id?: number | null
           id?: number
-          ip_address?: unknown
           new_data?: Json | null
           old_data?: Json | null
           operation?: string
           record_id?: number
-          session_id?: string | null
           table_name?: string
           user_id?: number | null
         }
