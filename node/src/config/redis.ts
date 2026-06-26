@@ -47,10 +47,17 @@ export const redis: Redis | null = redisEnabled
 	? new Redis(REDIS_URL!, options)
 	: null;
 
+/** The scheduler worker (WORKER_ROLE=scheduler) is a PUBLISHER ONLY: it PUBLISHes
+ *  sync events but holds no SSE clients, so it never consumes them. Skipping the
+ *  subscriber connection here makes eventBus's `if (redisSub)` subscribe wiring
+ *  no-op on the worker, leaving it with only the command/PUBLISH connection. */
+const subscriberEnabled = redisEnabled && process.env.WORKER_ROLE !== "scheduler";
+
 /** Dedicated subscriber connection. ioredis (like Redis itself) forbids running
  *  normal commands on a connection once it enters subscribe mode, so the
- *  backplane needs its own connection separate from `redis`. null when disabled. */
-export const redisSub: Redis | null = redisEnabled
+ *  backplane needs its own connection separate from `redis`. null when disabled
+ *  or when this process is the publisher-only scheduler worker. */
+export const redisSub: Redis | null = subscriberEnabled
 	? new Redis(REDIS_URL!, options)
 	: null;
 

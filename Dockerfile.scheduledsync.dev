@@ -1,0 +1,37 @@
+# Dev image for the standalone Plaid scheduled-sync worker.
+#
+# This is the sync scheduler extracted out of the API process: it runs the
+# node-cron job (every 30 min) that syncs each due household and PUBLISHES
+# sync:complete over Redis for the API instances to fan out to their SSE clients.
+# It is a PUBLISHER ONLY — it holds no SSE connections and never subscribes (see
+# WORKER_ROLE=scheduler in docker-compose.dev.yaml).
+#
+# Source is bind-mounted from the host (see docker-compose.dev.yaml), so this
+# image only needs the dependencies pre-installed. Mirrors Dockerfile.dev, but
+# runs worker.ts instead of server.ts and exposes 3005 (liveness only) not 3000.
+#
+# NOTE on dependencies: this dev image installs the full package.json (one shared
+# manifest serves the whole repo), same as Dockerfile.dev. The worker only loads
+# what worker.ts imports (pg, node-cron, ioredis, plaid, dotenv, zod) — the
+# frontend/build/test deps are installed but never required at runtime. Trimming
+# the dependency set belongs in a production Dockerfile with its own prune step,
+# not in a bind-mounted dev image.
+FROM node:22-slim
+
+WORKDIR /usr/local/app
+
+# Install all deps (including devDeps — we need tsx + nodemon at runtime).
+COPY package*.json ./
+RUN npm install
+
+# Liveness only — the worker serves GET /health here, no API.
+EXPOSE 3005
+
+# nodemon supervises tsx and respawns it on .ts changes.
+# --legacy-watch enables polling, which is required for file events to be
+# detected reliably through Docker bind mounts on Windows / WSL2.
+CMD ["npx", "nodemon", \
+     "--watch", "node/src", \
+     "--ext", "ts,js,json", \
+     "--legacy-watch", \
+     "--exec", "tsx", "node/src/worker.ts"]

@@ -54,7 +54,9 @@
       "Bash(gunzip -c ct1.json.gz)",
       "Bash(gunzip -c /tmp/ct2.json.gz)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(f\\\\\"{r['eventTime']}  {r['eventSource'].split\\('.'\\)[0]:14} {r['eventName']:22} by {r['userIdentity'].get\\('arn','?'\\)}  from {r.get\\('sourceIPAddress','?'\\)}\\\\\"\\) for r in d['Records']]\")",
-      "WebFetch(domain:plaid.com)"
+      "WebFetch(domain:plaid.com)",
+      "PowerShell(npx tsc -p tsconfig.server.json --noEmit)",
+      "PowerShell(docker compose *)"
     ]
   }
 }

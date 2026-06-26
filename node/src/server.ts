@@ -1,6 +1,5 @@
 import app from "./app.js";
 import { pool } from "./config/database.js";
-import { startScheduledSync } from "./services/plaid/scheduledSyncService.js";
 import { closeAllClients } from "./services/realtime/eventBus.js";
 import { closeRedis } from "./config/redis.js";
 
@@ -37,7 +36,11 @@ async function startServer() {
 			console.log(`🔗 Health check: http://localhost:${PORT}/health`);
 		});
 
-		startScheduledSync();
+		// NOTE: The Plaid scheduled sync no longer runs here. It lives in the
+		// dedicated scheduler worker (node/src/worker.ts) so that scaling the API
+		// horizontally doesn't run the cron on every instance (thundering herd).
+		// API instances only handle on-demand syncs (POST /api/v1/plaid/sync) and
+		// SUBSCRIBE to the worker's sync:complete events over Redis.
 
 		// ============================================
 		// Graceful Shutdown
