@@ -124,6 +124,15 @@ export default defineConfig({
 					],
 				},
 			},
+			{
+				test: {
+					name: "auditShipment",
+					testTimeout: 60000,
+					include: [
+						"node/src/tests/repository/auditShipmentRepository.test.ts",
+					],
+				},
+			},
 		],
 	},
 });

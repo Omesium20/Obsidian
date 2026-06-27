@@ -209,4 +209,55 @@ export async function seedGroup(
 	);
 }
 
+/**
+ * Inserts an audit_log row and returns it. Defaults to a minimal system-sourced
+ * INSERT on `accounts`; override any column. `changed_at` (export ordering) and
+ * `exported_at` (shipped marker) are the two most useful overrides — pass an ISO
+ * string to pin them. When `changed_at` is omitted the column default (NOW())
+ * applies.
+ */
+export async function seedAuditLog(overrides: Record<string, unknown> = {}) {
+	const defaults: Record<string, unknown> = {
+		user_id: null,
+		group_id: null,
+		table_name: "accounts",
+		record_id: 1,
+		operation: "INSERT",
+		old_data: null,
+		new_data: null,
+		action_source: "system",
+		exported_at: null,
+	};
+	const data = { ...defaults, ...overrides };
+
+	const columns = [
+		"user_id",
+		"group_id",
+		"table_name",
+		"record_id",
+		"operation",
+		"old_data",
+		"new_data",
+		"action_source",
+		"exported_at",
+	];
+	const values: unknown[] = columns.map((c) => data[c]);
+
+	// changed_at drives claim ordering. Only insert it explicitly when a test
+	// pins it; otherwise let the DB default (NOW()) apply.
+	if (overrides.changed_at !== undefined) {
+		columns.push("changed_at");
+		values.push(overrides.changed_at);
+	}
+
+	const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
+	const res = await pool.query(
+		`INSERT INTO audit_log (${columns.join(", ")})
+		 VALUES (${placeholders})
+		 RETURNING *`,
+		values
+	);
+	return res.rows[0];
+}
+
 export { pool };
