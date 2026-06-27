@@ -81,6 +81,53 @@ export const markBatchExported = async (
 	}
 };
 
+// Retention sweep for the audit outbox. Permanently deletes audit rows that are
+// BOTH older than `retentionDays` (by changed_at — the event time) AND already
+// exported (exported_at IS NOT NULL). Once a row is exported its durable home is
+// S3 (via SQS -> Lambda), so this table only needs a short hot window for recent
+// events; the sweep drains the rest.
+//
+// SAFETY: a row that is old but still UNEXPORTED is never deleted. That's an
+// unshipped audit event (e.g. an SQS outage or a stalled shipper) and it must
+// survive until it ships — losing it would punch a hole in the audit trail.
+// exported_at IS NOT NULL is therefore a hard precondition, not just an age gate.
+//
+// Deletes in bounded batches (LIMIT per statement) so a large backlog can't hold
+// a long lock on this high-write table; loops until the eligible set is drained.
+// Returns the total number of rows deleted.
+export const purgeExportedOlderThan = async (
+	retentionDays: number,
+	batchSize = 1000
+): Promise<number> => {
+	try {
+		let totalDeleted = 0;
+		for (;;) {
+			const res = await pool.query(
+				`DELETE FROM audit_log
+				  WHERE id IN (
+				    SELECT id
+				      FROM audit_log
+				     WHERE exported_at IS NOT NULL
+				       AND changed_at < NOW() - make_interval(days => $1::int)
+				     ORDER BY changed_at ASC
+				     LIMIT $2
+				  )`,
+				[retentionDays, batchSize]
+			);
+			const deleted = res.rowCount ?? 0;
+			totalDeleted += deleted;
+			// A short final batch (or zero) means the eligible set is drained.
+			if (deleted < batchSize) break;
+		}
+		return totalDeleted;
+	} catch (e) {
+		throw new DatabaseError("Failed to purge exported audit rows", {
+			retentionDays,
+			cause: e instanceof Error ? e.message : String(e),
+		});
+	}
+};
+
 // Count rows still awaiting export. Cheap (served by idx_audit_export_queue) —
 // intended for backlog metrics / health checks, not the hot path.
 export const countUnexported = async (): Promise<number> => {

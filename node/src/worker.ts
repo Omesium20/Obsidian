@@ -1,6 +1,7 @@
 import http from "http";
 import { pool } from "./config/database.js";
 import { startScheduledSync } from "./services/plaid/scheduledSyncService.js";
+import { startAuditRetention } from "./services/audit/auditRetentionService.js";
 import { closeRedis } from "./config/redis.js";
 
 // ============================================
@@ -67,6 +68,9 @@ async function startWorker() {
 
 		startScheduledSync();
 		console.log("⏰ [worker] Scheduled sync registered (publisher-only)");
+
+		startAuditRetention();
+		console.log("🧹 [worker] Audit retention sweep registered");
 
 		// ============================================
 		// Graceful Shutdown

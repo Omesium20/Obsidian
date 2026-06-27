@@ -5,7 +5,21 @@ import {
 	claimUnexportedBatch,
 	markBatchExported,
 	countUnexported,
+	purgeExportedOlderThan,
 } from "../../repository/auditShipmentRepository.js";
+
+// ISO timestamp for `n` days before now — used to age audit rows relative to the
+// real wall clock so retention assertions don't depend on hardcoded dates.
+const daysAgo = (n: number) =>
+	new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+
+// Total rows currently in audit_log.
+async function rowCount(): Promise<number> {
+	const res = await pool.query<{ count: string }>(
+		"SELECT COUNT(*) AS count FROM audit_log"
+	);
+	return Number(res.rows[0].count);
+}
 
 // Acquire a pooled client, run fn, always release. claimUnexportedBatch and
 // markBatchExported take a client so the real caller can hold row locks across
@@ -223,6 +237,105 @@ describe("auditShipmentRepository", () => {
 			await withClient((c) => markBatchExported(c, [a.id]));
 
 			expect(await countUnexported()).toBe(1);
+		});
+	});
+
+	// ============================================
+	// purgeExportedOlderThan
+	// ============================================
+
+	describe("purgeExportedOlderThan", () => {
+		it("deletes exported rows older than the retention window", async () => {
+			const old = await seedAuditLog({
+				record_id: 1,
+				changed_at: daysAgo(10),
+				exported_at: daysAgo(10),
+			});
+
+			const deleted = await purgeExportedOlderThan(7);
+
+			expect(deleted).toBe(1);
+			const raw = await pool.query("SELECT id FROM audit_log WHERE id = $1", [
+				old.id,
+			]);
+			expect(raw.rows).toHaveLength(0);
+		});
+
+		it("keeps exported rows newer than the retention window", async () => {
+			await seedAuditLog({
+				record_id: 1,
+				changed_at: daysAgo(2),
+				exported_at: daysAgo(2),
+			});
+
+			const deleted = await purgeExportedOlderThan(7);
+
+			expect(deleted).toBe(0);
+			expect(await rowCount()).toBe(1);
+		});
+
+		it("never deletes unexported rows, even when old (safety)", async () => {
+			const old = await seedAuditLog({
+				record_id: 1,
+				changed_at: daysAgo(30),
+				exported_at: null,
+			});
+
+			const deleted = await purgeExportedOlderThan(7);
+
+			expect(deleted).toBe(0);
+			const raw = await pool.query("SELECT id FROM audit_log WHERE id = $1", [
+				old.id,
+			]);
+			expect(raw.rows).toHaveLength(1);
+		});
+
+		it("deletes only the rows that are both old and exported", async () => {
+			// old + exported -> deleted
+			await seedAuditLog({
+				record_id: 1,
+				changed_at: daysAgo(10),
+				exported_at: daysAgo(10),
+			});
+			// old but unexported -> kept (unshipped event)
+			const unexported = await seedAuditLog({
+				record_id: 2,
+				changed_at: daysAgo(10),
+				exported_at: null,
+			});
+			// recent + exported -> kept (inside hot window)
+			const recent = await seedAuditLog({
+				record_id: 3,
+				changed_at: daysAgo(2),
+				exported_at: daysAgo(2),
+			});
+
+			const deleted = await purgeExportedOlderThan(7);
+
+			expect(deleted).toBe(1);
+			const remaining = await pool.query(
+				"SELECT id FROM audit_log ORDER BY id"
+			);
+			expect(remaining.rows.map((r) => Number(r.id))).toEqual([
+				Number(unexported.id),
+				Number(recent.id),
+			]);
+		});
+
+		it("drains a backlog larger than one batch", async () => {
+			for (let i = 1; i <= 5; i++) {
+				await seedAuditLog({
+					record_id: i,
+					changed_at: daysAgo(10),
+					exported_at: daysAgo(10),
+				});
+			}
+
+			// batchSize of 2 forces multiple delete passes.
+			const deleted = await purgeExportedOlderThan(7, 2);
+
+			expect(deleted).toBe(5);
+			expect(await rowCount()).toBe(0);
 		});
 	});
 });
