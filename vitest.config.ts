@@ -133,6 +133,15 @@ export default defineConfig({
 					],
 				},
 			},
+			{
+				test: {
+					name: "auditShipper",
+					testTimeout: 60000,
+					include: [
+						"node/src/tests/service/auditShipperService.test.ts",
+					],
+				},
+			},
 		],
 	},
 });

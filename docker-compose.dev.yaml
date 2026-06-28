@@ -4,7 +4,9 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
+      target: dev
+    # No command override: the dev stage's default CMD already runs server.ts.
     container_name: obsidian-backend-dev
     env_file: .env.dev
     # .env.dev points the DB/SMTP host at 127.0.0.1 for native `npm run server`
@@ -60,6 +62,33 @@ services:
       timeout: 3s
       retries: 12
 
+  # LocalStack: emulates AWS in dev so the audit-export pipeline runs end-to-end
+  # without touching real AWS. SERVICES=sqs provisions the SQS API on :4566; the
+  # init script (scripts/localstack) creates the audit-export FIFO queue + DLQ on
+  # startup. The scheduler worker ships to it via AWS_ENDPOINT_URL. Prod leaves
+  # AWS_ENDPOINT_URL unset and hits real AWS with an EC2 instance role.
+  localstack:
+    image: localstack/localstack:3
+    container_name: obsidian-localstack-dev
+    environment:
+      SERVICES: "sqs,s3,lambda"
+      DEBUG: "0"
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./scripts/localstack:/etc/localstack/init/ready.d
+      # The audit-archiver Lambda source. The init script zips this dir and
+      # deploys it via --zip-file (see scripts/localstack/02-deploy-lambda.sh).
+      - ./lambda/audit-archiver:/opt/code/audit-archiver
+      # LocalStack runs Lambdas as Docker containers, so it needs the host socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs list-queues || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
   # Standalone Plaid sync scheduler (publisher-only). Runs the node-cron job that
   # used to live in the API process, so scaling the API horizontally no longer
   # runs the cron on every instance. Builds from Dockerfile.scheduledsync.dev and
@@ -68,7 +97,20 @@ services:
   scheduler:
     build:
       context: .
-      dockerfile: Dockerfile.scheduledsync.dev
+      dockerfile: Dockerfile
+      target: dev
+    # Same dev image as the backend, but supervises worker.ts instead of server.ts.
+    command:
+      - "npx"
+      - "nodemon"
+      - "--watch"
+      - "node/src"
+      - "--ext"
+      - "ts,js,json"
+      - "--legacy-watch"
+      - "--exec"
+      - "tsx"
+      - "node/src/worker.ts"
     container_name: obsidian-scheduler-dev
     env_file: .env.dev
     # Same loopback->host override as the backend so the worker reaches the
@@ -78,6 +120,12 @@ services:
       REDIS_URL: "redis://redis:6379"
       WORKER_ROLE: "scheduler"
       PORT: "3005"
+      # The audit shipper runs on this worker. Point it at LocalStack's SQS; the
+      # queue URL uses LocalStack's in-cluster host + fixed account id. Prod
+      # leaves AWS_ENDPOINT_URL unset so the SDK hits real AWS via instance role.
+      AWS_ENDPOINT_URL: "http://localstack:4566"
+      AWS_REGION: "us-east-1"
+      SQS_AUDIT_QUEUE_URL: "http://localstack:4566/000000000000/audit-export.fifo"
     ports:
       - "3005:3005"
     volumes:
@@ -94,6 +142,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      localstack:
+        condition: service_healthy
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -106,7 +156,11 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.dev
+      dockerfile: Dockerfile
+      target: dev
+    # --host 0.0.0.0 so Vite is reachable outside the container (polling via the
+    # CHOKIDAR_USEPOLLING env var below).
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
     container_name: obsidian-frontend-dev
     environment:
       CHOKIDAR_USEPOLLING: "true"
@@ -134,7 +188,8 @@ services:
   test:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
+      target: dev
     container_name: obsidian-test
     env_file: .env.test
     # Same host override as the backend service: .env.test uses 127.0.0.1 for

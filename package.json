@@ -17,6 +17,7 @@
 		"test:docker": "docker compose -f docker-compose.dev.yaml --profile test run --rm test"
 	},
 	"dependencies": {
+		"@aws-sdk/client-sqs": "^3.1075.0",
 		"@supabase/supabase-js": "^2.86.2",
 		"@tailwindcss/vite": "^4.1.17",
 		"@types/argon2": "^0.14.1",

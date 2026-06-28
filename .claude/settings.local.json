@@ -62,7 +62,11 @@
       "Bash(node \"C:/Users/Owner/AppData/Local/Temp/claude/C--Users-Owner-Documents-Projects-Obsidian-Financial-Obsidian/c6e44027-595d-4a46-80c8-766494b6746c/scratchpad/verifyAudit.mjs\")",
       "Bash(cp \"C:/Users/Owner/AppData/Local/Temp/claude/C--Users-Owner-Documents-Projects-Obsidian-Financial-Obsidian/c6e44027-595d-4a46-80c8-766494b6746c/scratchpad/verifyAudit.mjs\" \"C:/Users/Owner/Documents/Projects/Obsidian Financial/Obsidian/verifyAudit.mjs\")",
       "Bash(node verifyAudit.mjs)",
-      "Bash(rm -f \"C:/Users/Owner/Documents/Projects/Obsidian Financial/Obsidian/verifyAudit.mjs\")"
+      "Bash(rm -f \"C:/Users/Owner/Documents/Projects/Obsidian Financial/Obsidian/verifyAudit.mjs\")",
+      "PowerShell(docker exec obsidian-localstack-dev *)",
+      "PowerShell(docker exec *)",
+      "Bash(bash -n \"scripts/localstack/02-deploy-lambda.sh\")",
+      "PowerShell(docker build *)"
     ]
   }
 }
