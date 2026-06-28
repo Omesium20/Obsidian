@@ -153,6 +153,47 @@ describe("dashboardRepository — transaction list", () => {
 	});
 
 	// ============================================
+	// getMyTransactionsPaged — is_private flag
+	// ============================================
+
+	describe("getMyTransactionsPaged is_private flag", () => {
+		it("flags transactions on accounts not shared with the viewer's group, and not those that are", async () => {
+			const user = await seedUser();
+			const group = await seedGroup(user.id);
+			const shared = await seedAccount(user.id, { account_name: "Shared" });
+			const privateAcct = await seedAccount(user.id, { account_name: "Private" });
+			await seedAccountMember(shared.id, user.id, "owner");
+			await seedAccountMember(privateAcct.id, user.id, "owner");
+			// Only the shared account has a visibility row for the group.
+			await seedAccountGroupVisibility(shared.id, group.id);
+
+			await seedTx(user.id, shared.id, { amount: -50, merchant_name: "Shared Tx" });
+			await seedTx(user.id, privateAcct.id, { amount: -25, merchant_name: "Private Tx" });
+
+			const result = await getMyTransactionsPaged(
+				user.id, 1, 25, "all", undefined, "all", undefined, group.id
+			);
+
+			const byMerchant = Object.fromEntries(
+				result.transactions.map((t) => [t.merchant_name, t.is_private])
+			);
+			expect(byMerchant["Shared Tx"]).toBe(false);
+			expect(byMerchant["Private Tx"]).toBe(true);
+		});
+
+		it("never flags rows as private when no group context is passed", async () => {
+			const user = await seedUser();
+			const account = await seedAccount(user.id);
+			await seedAccountMember(account.id, user.id, "owner");
+			await seedTx(user.id, account.id, { amount: -50 });
+
+			const result = await getMyTransactionsPaged(user.id, 1, 25, "all");
+
+			expect(result.transactions.every((t) => t.is_private === false)).toBe(true);
+		});
+	});
+
+	// ============================================
 	// getMyTransactionsPaged — full-set summary
 	// ============================================
 
