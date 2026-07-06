@@ -6,6 +6,7 @@ import {
 	removeTransaction,
 } from "../../services/transactionService.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { apiRateLimit } from "../../middleware/rateLimit.js";
 import { authorizeMember } from "../../middleware/authorizeMember.js";
 import { validate } from "../../middleware/validate.js";
 import { idParamSchema } from "../../schemas/common.js";
@@ -19,7 +20,7 @@ import { invalidateGroupSummaries } from "../../services/cache/dashboardCache.js
 const router = Router();
 
 // All transaction routes require authentication + group membership
-router.use(authenticate, authorizeMember);
+router.use(authenticate, apiRateLimit, authorizeMember);
 
 // Get transaction by ID
 router.get("/:id", validate({ params: idParamSchema }), async (req, res) => {

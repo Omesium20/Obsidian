@@ -2,6 +2,7 @@ import { Router } from "express";
 import { removeUser, updateProfile } from "../../services/userServices.js";
 import { getMostRecentTransactions } from "../../services/userServices.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { apiRateLimit } from "../../middleware/rateLimit.js";
 import { authorizeMember } from "../../middleware/authorizeMember.js";
 import { validate } from "../../middleware/validate.js";
 import { paginationQuerySchema } from "../../schemas/common.js";
@@ -10,7 +11,7 @@ import { deleteUserSchema, updateProfileSchema } from "../../schemas/userSchemas
 const router = Router();
 
 // All user routes require authentication + group membership
-router.use(authenticate, authorizeMember);
+router.use(authenticate, apiRateLimit, authorizeMember);
 
 // Update own display name (any authenticated user, own account only)
 router.patch("/", validate({ body: updateProfileSchema }), async (req, res) => {

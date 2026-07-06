@@ -4,6 +4,7 @@ import { getAccounts } from "../../services/accountService.js";
 import { getTransactions } from "../../services/transactionService.js";
 import { getGroups } from "../../services/groupService.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { apiRateLimit } from "../../middleware/rateLimit.js";
 import { authorizeAdmin } from "../../middleware/authorizeAdmin.js";
 import { validate } from "../../middleware/validate.js";
 import { idParamSchema } from "../../schemas/common.js";
@@ -12,7 +13,7 @@ import { createUserSchema } from "../../schemas/userSchemas.js";
 const router = Router();
 
 // All admin routes require authentication + admin role
-router.use(authenticate, authorizeAdmin);
+router.use(authenticate, apiRateLimit, authorizeAdmin);
 
 // Get all users
 router.get("/users", async (_req, res) => {

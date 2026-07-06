@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { validate } from "../../middleware/validate.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { apiRateLimit, authRateLimit } from "../../middleware/rateLimit.js";
 import {
 	createInvitationSchema,
 	acceptInvitationSchema,
@@ -20,8 +21,9 @@ import { issueRefreshToken } from "../../services/auth/refreshService.js";
 
 const router = Router();
 
-// Public preview — returns inviter name, group name, masked invitee email (no auth)
-router.get("/preview", async (req, res) => {
+// Public preview — returns inviter name, group name, masked invitee email (no auth).
+// authRateLimit because the token query param is a guessable secret.
+router.get("/preview", authRateLimit, async (req, res) => {
 	const { token } = req.query;
 	if (typeof token !== "string" || !token) {
 		throw new ValidationError("token query parameter is required");
@@ -34,6 +36,7 @@ router.get("/preview", async (req, res) => {
 router.post(
 	"/",
 	authenticate,
+	apiRateLimit,
 	validate({ body: createInvitationSchema }),
 	async (req, res) => {
 		const { token, invitationId, inviterName, groupName } = await sendInvitation(
@@ -56,6 +59,7 @@ router.post(
 router.post(
 	"/accept",
 	authenticate,
+	apiRateLimit,
 	validate({ body: acceptInvitationSchema }),
 	async (req, res) => {
 		await acceptInvitation(req.body.token, req.user!.userId);
@@ -92,6 +96,7 @@ router.post(
 router.post(
 	"/decline",
 	authenticate,
+	apiRateLimit,
 	validate({ body: declineInvitationSchema }),
 	async (req, res) => {
 		await declineInvitation(req.body.token, req.user!.userId);

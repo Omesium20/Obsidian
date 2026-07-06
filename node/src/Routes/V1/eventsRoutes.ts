@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/authenticate.js";
+import { apiRateLimit } from "../../middleware/rateLimit.js";
 import { authorizeMember } from "../../middleware/authorizeMember.js";
 import { addClient, removeClient } from "../../services/realtime/eventBus.js";
 
@@ -10,7 +11,7 @@ const router = Router();
 // exactly like every other route. The connection authenticates once at the
 // handshake — it is a notify-only channel; the data refetch it triggers still
 // goes through full per-request auth.
-router.get("/", authenticate, authorizeMember, (req, res) => {
+router.get("/", authenticate, apiRateLimit, authorizeMember, (req, res) => {
 	const groupId = req.user!.groupId;
 	if (!groupId) {
 		res.status(400).json({ message: "No active group" });

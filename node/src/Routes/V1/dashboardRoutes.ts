@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/authenticate.js";
+import { apiRateLimit } from "../../middleware/rateLimit.js";
 import { authorizeMember } from "../../middleware/authorizeMember.js";
 import { validate } from "../../middleware/validate.js";
 import { AuthenticationError } from "../../errors/index.js";
@@ -32,7 +33,7 @@ import type { PagedTransactions } from "../../repository/dashboardRepository.js"
 import { getOrSetSummary } from "../../services/cache/dashboardCache.js";
 
 const router = Router();
-router.use(authenticate, authorizeMember);
+router.use(authenticate, apiRateLimit, authorizeMember);
 
 // Get dashboar information
 router.get("/summary", async (req, res) => {

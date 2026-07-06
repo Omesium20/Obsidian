@@ -13,22 +13,20 @@ import plaidRoutes from "./plaidRoutes.js";
 import sessionRoute from "./sessionRoute.js";
 import dashboardRoutes from "./dashboardRoutes.js";
 import eventsRoutes from "./eventsRoutes.js";
-import { apiRateLimit } from "../../middleware/rateLimit.js";
+import { authRateLimit } from "../../middleware/rateLimit.js";
 
 const router = Router();
 
-// Global API rate limit across all v1 routes. authenticate runs inside each
-// sub-router (below), so req.user isn't resolved here yet — this keys by IP, a
-// per-client edge guard that also covers the public routes. No-op when Redis is
-// disabled. For per-USER limits, mount apiRateLimit after authenticate inside a
-// specific sub-router instead.
-router.use(apiRateLimit);
+// Rate limiting strategy: the brute-force-sensitive public routes get the tight
+// IP-keyed authRateLimit here; every authenticated sub-router mounts the
+// per-user apiRateLimit after its own authenticate. Both are no-ops when Redis
+// is disabled.
 
 // Public routes
-router.use("/register", registerRoutes);
-router.use("/login", loginRoutes);
+router.use("/register", authRateLimit, registerRoutes);
+router.use("/login", authRateLimit, loginRoutes);
 router.use("/logout", logoutRoutes);
-router.use("/password-reset", passwordResetRoutes);
+router.use("/password-reset", authRateLimit, passwordResetRoutes);
 router.use("/session", sessionRoute);
 
 // Authenticated routes

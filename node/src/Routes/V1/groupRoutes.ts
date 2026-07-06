@@ -7,6 +7,7 @@ import {
 	kickMember,
 } from "../../services/groupService.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { apiRateLimit } from "../../middleware/rateLimit.js";
 import { authorizeMember } from "../../middleware/authorizeMember.js";
 import { authorizeCreator } from "../../middleware/authorizeCreator.js";
 import { attachFreshToken } from "../../middleware/attachFreshToken.js";
@@ -22,7 +23,7 @@ import {
 const router = Router();
 
 // All group routes require authentication
-router.use(authenticate);
+router.use(authenticate, apiRateLimit);
 
 // Get group by ID (members only — must match the caller's own group)
 router.get("/:id", authorizeMember, validate({ params: idParamSchema }), async (req, res) => {

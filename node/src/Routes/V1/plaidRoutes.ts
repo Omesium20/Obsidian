@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/authenticate.js";
+import { apiRateLimit } from "../../middleware/rateLimit.js";
 import { authorizeMember } from "../../middleware/authorizeMember.js";
 import { validate } from "../../middleware/validate.js";
 import { createLinkToken } from "../../services/plaid/linkTokenService.js";
@@ -22,7 +23,7 @@ import { publishToGroup } from "../../services/realtime/eventBus.js";
 
 const router = Router();
 
-router.use(authenticate, authorizeMember);
+router.use(authenticate, apiRateLimit, authorizeMember);
 
 router.post("/link-token", async (req, res) => {
 	const { link_token, expiration } = await createLinkToken(req.user!.userId);
