@@ -16,7 +16,7 @@ router.post(
 	"/request",
 	validate({ body: requestPasswordResetSchema }),
 	async (req, res) => {
-		const result = await requestPasswordReset(req.body.email);
+		const result = await requestPasswordReset(req.body.email, { ip: req.ip });
 
 		if (result) {
 			await sendPasswordResetEmail(req.body.email, result.token);
@@ -33,7 +33,9 @@ router.post(
 	"/reset",
 	validate({ body: resetPasswordSchema }),
 	async (req, res) => {
-		await resetPassword(req.body.token, req.body.new_password);
+		await resetPassword(req.body.token, req.body.new_password, {
+			ip: req.ip,
+		});
 
 		res.status(200).json({ message: "Password reset successful" });
 	}

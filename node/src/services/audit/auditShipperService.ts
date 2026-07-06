@@ -61,6 +61,10 @@ function serializeAuditRow(row: AuditLogRow) {
 // the entire audit stream through one serial lane — unnecessary, since we only
 // care that each record's own events stay in order.
 //
+// Auth events (table_name 'auth_events') have no record_id; they all share the
+// "auth_events:-" group, which keeps the auth event stream itself in order —
+// fine at its volume, and useful when reconstructing an attack timeline.
+//
 // MessageDeduplicationId = the audit row id: globally unique and stable, so a
 // crash-and-resend of an already-accepted row is deduped by SQS.
 export function buildBatchEntries(
@@ -69,7 +73,7 @@ export function buildBatchEntries(
 	return rows.map((row) => ({
 		Id: String(row.id),
 		MessageBody: JSON.stringify(serializeAuditRow(row)),
-		MessageGroupId: `${row.table_name}:${row.record_id}`,
+		MessageGroupId: `${row.table_name}:${row.record_id ?? "-"}`,
 		MessageDeduplicationId: String(row.id),
 	}));
 }

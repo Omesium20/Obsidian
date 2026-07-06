@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { redis } from "../config/redis.js";
 import { RateLimitError } from "../errors/index.js";
+import { recordAuthEvent } from "../services/audit/authEventService.js";
 
 // Distributed fixed-window rate limiter backed by Redis, so the limit is shared
 // across every Node instance rather than counted per-process. Returns Express
@@ -33,13 +34,16 @@ interface RateLimitOptions {
 	keyPrefix: string;
 	/** Derive the per-caller key. Defaults to user id when authenticated, else IP. */
 	keyFn?: (req: Request) => string;
+	/** Called when a request is blocked, just before the 429 is thrown. Must not
+	 *  throw (audit hooks are best-effort by construction). */
+	onLimit?: (req: Request) => void | Promise<void>;
 }
 
 const defaultKey = (req: Request): string =>
 	req.user?.userId ? `user:${req.user.userId}` : `ip:${req.ip}`;
 
 export function rateLimit(options: RateLimitOptions) {
-	const { windowMs, max, keyPrefix, keyFn = defaultKey } = options;
+	const { windowMs, max, keyPrefix, keyFn = defaultKey, onLimit } = options;
 
 	return async (req: Request, res: Response, next: NextFunction) => {
 		// Disabled (single-node) → allow. No-op, no headers.
@@ -68,6 +72,7 @@ export function rateLimit(options: RateLimitOptions) {
 		if (count > max) {
 			const retryAfterSeconds = Math.ceil(windowMs / 1000);
 			res.setHeader("Retry-After", retryAfterSeconds);
+			if (onLimit) await onLimit(req);
 			throw new RateLimitError(retryAfterSeconds);
 		}
 
@@ -83,6 +88,12 @@ export const authRateLimit = rateLimit({
 	windowMs: 15 * 60_000,
 	max: 10,
 	keyPrefix: "auth",
+	// A blocked auth request is the loudest burst-attack signal there is —
+	// record it as an auth audit event (best-effort, never throws).
+	onLimit: (req) =>
+		recordAuthEvent("RATE_LIMITED", {
+			detail: { ip: req.ip, path: req.originalUrl },
+		}),
 });
 
 // Generous limit on the authenticated API surface, keyed per user.

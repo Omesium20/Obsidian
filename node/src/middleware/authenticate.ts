@@ -18,8 +18,10 @@ const refreshSession = async (
 	res: Response,
 	incomingRefreshToken: string
 ) => {
-	const { accessToken, refreshToken, payload } =
-		await refreshTokens(incomingRefreshToken);
+	const { accessToken, refreshToken, payload } = await refreshTokens(
+		incomingRefreshToken,
+		{ ip: req.ip }
+	);
 
 	res.cookie("access_token", `Bearer ${accessToken}`, {
 		httpOnly: true,

@@ -8,6 +8,10 @@ import {
 } from "../../repository/refreshTokenRepository.js";
 import { findActiveMembership } from "../../repository/groupRepository.js";
 import { AuthenticationError } from "../../errors/index.js";
+import {
+	recordAuthEvent,
+	AuthRequestContext,
+} from "../audit/authEventService.js";
 
 const REFRESH_TOKEN_EXPIRES_DAYS = 7;
 const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
@@ -40,18 +44,28 @@ export const recordRefreshTokenActivity = async (
 };
 
 export const refreshTokens = async (
-	incomingToken: string
+	incomingToken: string,
+	context: AuthRequestContext = {}
 ): Promise<{ accessToken: string; refreshToken: string; payload: AccessTokenPayload }> => {
 	let payload: { userId: number };
 	try {
 		payload = verifyRefreshToken(incomingToken);
 	} catch {
+		await recordAuthEvent("REFRESH_FAILED", {
+			detail: { ip: context.ip, reason: "invalid_or_expired_jwt" },
+		});
 		throw new AuthenticationError("Invalid or expired refresh token");
 	}
 
 	const tokenHash = hashToken(incomingToken);
 	const stored = await findRefreshToken(tokenHash);
 	if (!stored) {
+		// A validly-signed token that isn't in the store: revoked, rotated away,
+		// or replayed after logout — worth attributing to the user it names.
+		await recordAuthEvent("REFRESH_FAILED", {
+			userId: payload.userId,
+			detail: { ip: context.ip, reason: "unrecognised_or_revoked" },
+		});
 		throw new AuthenticationError("Refresh token not recognised or already revoked");
 	}
 
@@ -61,6 +75,11 @@ export const refreshTokens = async (
 	const lastActivity = new Date(stored.last_used_at ?? stored.created_at!).getTime();
 	if (Date.now() - lastActivity > INACTIVITY_LIMIT_MS) {
 		await revokeAllUserRefreshTokens(payload.userId);
+		await recordAuthEvent("SESSION_REVOKED", {
+			userId: payload.userId,
+			actionSource: "system",
+			detail: { ip: context.ip, reason: "inactivity" },
+		});
 		throw new AuthenticationError("Session expired due to inactivity");
 	}
 

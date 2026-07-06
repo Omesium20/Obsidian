@@ -135,6 +135,15 @@ export default defineConfig({
 			},
 			{
 				test: {
+					name: "authEvents",
+					testTimeout: 60000,
+					include: [
+						"node/src/tests/service/authEventService.test.ts",
+					],
+				},
+			},
+			{
+				test: {
 					name: "auditShipper",
 					testTimeout: 60000,
 					include: [

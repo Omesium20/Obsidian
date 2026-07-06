@@ -6,7 +6,9 @@ import { loginSchema } from "../../schemas/authSchemas.js";
 const router = Router();
 
 router.post("/", validate({ body: loginSchema }), async (req, res) => {
-	const { accessToken, refreshToken } = await loginUser(req.body);
+	const { accessToken, refreshToken } = await loginUser(req.body, {
+		ip: req.ip,
+	});
 
 	res.cookie("access_token", `Bearer ${accessToken}`, {
 		httpOnly: true,
