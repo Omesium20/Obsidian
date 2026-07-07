@@ -35,9 +35,13 @@ export function signRefreshToken(payload: { userId: number }): string {
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload {
-	return jwt.verify(token, JWT_ACCESS_SECRET) as AccessTokenPayload;
+	return jwt.verify(token, JWT_ACCESS_SECRET, {
+		algorithms: ["HS256"],
+	}) as AccessTokenPayload;
 }
 
 export function verifyRefreshToken(token: string): { userId: number } {
-	return jwt.verify(token, JWT_REFRESH_SECRET) as { userId: number };
+	return jwt.verify(token, JWT_REFRESH_SECRET, {
+		algorithms: ["HS256"],
+	}) as { userId: number };
 }

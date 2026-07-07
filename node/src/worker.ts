@@ -52,7 +52,9 @@ function startHealthServer(): http.Server {
 		res.end();
 	});
 	server.listen(PORT, () => {
-		console.log(`🩺 [worker] Health check: http://localhost:${PORT}/health`);
+		console.log(
+			`🩺 [worker] Health check: http://localhost:${PORT}/health`
+		);
 	});
 	return server;
 }
@@ -80,7 +82,9 @@ async function startWorker() {
 		// Graceful Shutdown
 		// ============================================
 		const gracefulShutdown = async (signal: string) => {
-			console.log(`\n[worker] ${signal} received. Starting graceful shutdown...`);
+			console.log(
+				`\n[worker] ${signal} received. Starting graceful shutdown...`
+			);
 
 			server.close(async () => {
 				console.log("✅ [worker] Health server closed");
@@ -112,4 +116,16 @@ async function startWorker() {
 }
 
 // Start the worker
+// node/src/server.ts and node/src/worker.ts
+// Last-resort nets: an error that escapes every handler leaves the process in
+// unknown state, so log it loudly and exit — the orchestrator restarts clean.
+// Node would crash anyway; these hooks buy a useful log line on the way down.
+process.on("uncaughtException", (err) => {
+	console.error("💥 Uncaught exception, exiting:", err);
+	process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+	console.error("💥 Unhandled rejection, exiting:", reason);
+	process.exit(1);
+});
 startWorker();

@@ -66,7 +66,14 @@
       "PowerShell(docker exec obsidian-localstack-dev *)",
       "PowerShell(docker exec *)",
       "Bash(bash -n \"scripts/localstack/02-deploy-lambda.sh\")",
-      "PowerShell(docker build *)"
+      "PowerShell(docker build *)",
+      "WebFetch(domain:owasp.org)",
+      "Bash(git check-ignore *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(npm audit *)",
+      "PowerShell(npm run *)",
+      "PowerShell(npx vitest run --project authEvents)",
+      "PowerShell(git *)"
     ]
   }
 }

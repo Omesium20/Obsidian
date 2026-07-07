@@ -9,7 +9,11 @@ export const createLinkToken = async (
 		const res = await plaidClient.linkTokenCreate({
 			user: { client_user_id: String(userId) },
 			client_name: "Obsidian Financial",
-			products: [Products.Transactions],
+			// Transactions drives the ledger; Investments lets brokerage/retirement
+			// accounts (e.g. Schwab) through Link so their total value lands in
+			// accounts.balance_current. We only read the account-level balance, not
+			// holdings/investment transactions (separate products).
+			products: [Products.Transactions, Products.Investments],
 			country_codes: [CountryCode.Us],
 			language: "en",
 			// Plaid defaults to 90 days of history on a new Item; request 180 so
