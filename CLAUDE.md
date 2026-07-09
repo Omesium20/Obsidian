@@ -1,196 +1,109 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code
+in this repository. It is an index — the full documentation lives in `docs/`.
+**When working on a topic, read its doc first.** Keep this file under 200 lines;
+put detail in the topic docs and expand them there. Whenever a new feature or architectural change
+is made you will make a new document to describe that feature in detail. However if we make
+a change systematically we will document that change.
+We also would need to edit content when possible on a change.
 
 ## Project Overview
 
-Obsidian Financial is a full-stack TypeScript application with two halves living in one repo:
+Obsidian Financial is a household personal-finance app: link banks via Plaid,
+invite family into a shared household, get a live dashboard of balances,
+transactions, subscriptions, and net worth. Full-stack TypeScript, one repo:
 
-- **Frontend** (`src/`): React 19 + Vite + Tailwind 4. `main.tsx` is the entry; the dashboard lives in `pages/Dashboard.tsx` + `features/dashboard/` (charts, tabs, modals), with the API client in `lib/api.ts`.
-- **Backend** (`node/src/`): Express 5 API server, mounted at `/api/v1`. Talks to a Supabase-hosted Postgres over the `pg` driver (no ORM — raw SQL in repository files).
+- **Frontend** (`src/`): React 19 + Vite + Tailwind 4 SPA. Custom router, cookie
+  auth, Recharts. `tsconfig.app.json`.
+- **API server** (`node/src/server.ts`): Express 5 at `/api/v1`. Raw SQL over
+  `pg` to Supabase Postgres (no ORM). `tsconfig.server.json` → `node/dist`.
+- **Scheduler worker** (`node/src/worker.ts`): separate process for all cron work
+  (Plaid sync, audit retention, audit→SQS shipper) so scaled API instances don't
+  each run the cron.
+- **Optional infra** (unset env = feature off, app unaffected): Redis (SSE
+  pub/sub backplane, distributed rate limiting, caching) and SQS→Lambda→S3 audit
+  export (LocalStack in dev).
 
-The two halves use different `tsconfig` files (`tsconfig.app.json` for the client, `tsconfig.server.json` for the server, `rootDir: ./node`, `outDir: ./node/dist`).
+## Documentation map (`docs/`)
 
-## Commands
+| Doc                                                       | Read when working on                                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [project-overview.md](docs/project-overview.md)           | Architecture, process topology, repo layout, design principles                         |
+| [commands.md](docs/commands.md)                           | All npm scripts, running single tests/projects                                         |
+| [environment.md](docs/environment.md)                     | `.env*` files, env var reference, native vs containerized dev, LocalStack              |
+| [backend-architecture.md](docs/backend-architecture.md)   | app/server/worker wiring, routes, middleware, services, repositories, errors           |
+| [frontend-architecture.md](docs/frontend-architecture.md) | Router, pages, dashboard feature, API client, session handling, styles                 |
+| [auth.md](docs/auth.md)                                   | JWT cookies, silent refresh, inactivity limit, hashing                                 |
+| [database.md](docs/database.md)                           | Migrations, tables, RLS, locks, column conventions (amount sign, Plaid taxonomy)       |
+| [redis.md](docs/redis.md)                                 | Redis config, optional/degrade semantics, connections, WORKER_ROLE                     |
+| [realtime-sse.md](docs/realtime-sse.md)                   | SSE endpoint, event bus, pub/sub fan-out, adding events                                |
+| [caching.md](docs/caching.md)                             | Cache-aside layer, dashboard summary cache, invalidation rules                         |
+| [rate-limiting.md](docs/rate-limiting.md)                 | Limiter middleware, fail-open policy, auth/api limiters                                |
+| [audit-pipeline.md](docs/audit-pipeline.md)               | audit_log outbox, SQS shipper, Lambda archiver, retention                              |
+| [plaid.md](docs/plaid.md)                                 | Link flow, transaction sync, cadence, balances, recurring, net worth, token encryption |
+| [group-lifecycle.md](docs/group-lifecycle.md)             | Registration, invites, leave/kick, personal-group restore                              |
+| [account-visibility.md](docs/account-visibility.md)       | Sharing/privacy, co-ownership, deletion/transfer                                       |
+| [testing.md](docs/testing.md)                             | Vitest projects, global setup, helpers, Plaid test pattern                             |
+| [deployment.md](docs/deployment.md)                       | Dockerfile stages, prod compose, what prod still needs                                 |
+| [scaling.md](docs/scaling.md)                             | Horizontal scaling: what makes it safe, deployment shape, rules                        |
+| [email.md](docs/email.md)                                 | Nodemailer config, dev Mailpit vs prod SMTP                                            |
+
+## Commands (most used — full list in docs/commands.md)
 
 ```bash
 npm run dev          # Vite dev server (frontend, native)
-npm run server       # Backend with nodemon + tsx (hot reload, runs node/src/server.ts)
-npm run build        # tsc -b && vite build (frontend production build)
-npm run build:server # Compile backend to node/dist/
-npm run lint         # ESLint over the repo
-npm test             # Vitest (single run, integration tests against local Postgres)
+npm run server       # Backend, nodemon + tsx hot reload
+npm test             # Vitest integration tests (needs npx supabase start)
+npm run lint         # ESLint
+npm run dev:up       # Containerized stack: backend + scheduler + frontend + Redis + LocalStack
+npm run dev:down     # Tear the stack down
+npm run test:docker  # Vitest inside the test container
 
-# Containerized dev stack
-npm run dev:up       # supabase start + docker compose dev up (backend + frontend, hot reload)
-npm run dev:down     # docker compose dev down + supabase stop
-npm run test:docker  # Run vitest inside the test container against .env.test
+npx vitest run --project users            # one vitest project
+npx vitest run node/src/tests/repository/userRepository.test.ts  # one file
 ```
 
-Run a single test file: `npx vitest run node/src/tests/repository/userRepository.test.ts`
+Pick **one dev environment per session** — native or containerized, not both
+(port conflicts).
 
-The test runner is configured with named projects in `vitest.config.ts` — to run one project: `npx vitest run --project users` (or `accounts`, `groups`, `transactions`, `refreshTokens`, `plaidSync`, `accountTransactions`, `refreshService`, `balanceSnapshots`). Each project maps to exactly one test file via its `include` glob, so a new test file needs a new project entry to be picked up.
+## Critical rules (violating these breaks things)
 
-## Environment files
+- **Leave the DB/SMTP host on `127.0.0.1` in `.env.dev`/`.env.test` — do not
+  "fix" it.** Compose overrides just those vars to `host.docker.internal` for
+  containers; pointing a _native_ run there makes startup time out and exit. See
+  docs/environment.md.
+- **Express 5**: async route handlers need no try/catch — errors propagate to the
+  central handler. Don't add wrappers. Always throw `AppError` subclasses
+  (`node/src/errors/`), never raw `Error`.
+- **All SQL lives in `node/src/repository/`**; business logic in services;
+  request validation in Zod schemas + the `validate` middleware.
+- **`transactions.amount`: positive = inflow, negative = outflow.** Plaid returns
+  the opposite; the sync service flips the sign. Manual entries use the natural
+  sign (no flip).
+- **Redis/SQS are optional and best-effort.** Check `redis`/`sqsClient` for null;
+  fail open (rate limits), fall through (cache), deliver locally (events). A
+  Redis outage must never 500 a request. Correctness locking stays on Postgres.
+- **New cron/interval jobs go in `worker.ts`, not `server.ts`** — the API scales
+  horizontally; the worker runs as one instance (docs/scaling.md).
+- **After any mutation that changes cached data, invalidate before responding or
+  publishing** (`invalidateGroupSummaries` for dashboard data — docs/caching.md).
+- **New test files need a new project entry in `vitest.config.ts`** with
+  `testTimeout` set inside the project (root value not inherited). Tests share
+  one DB — `fileParallelism: false` stays.
+- **Client and server `INACTIVITY_LIMIT_MS` must stay in sync**
+  (`src/lib/api.ts` ↔ `node/src/services/auth/refreshService.ts`).
+- **`createPersonalGroupForUser` is the single source of truth for solo state** —
+  never duplicate the group+membership+visibility logic inline.
+- **`PLAID_ENCRYPTION_KEY` rotation requires re-encrypting all `plaid_items`
+  rows** first; `.env.test` uses a different key.
+- **Containerized stack + new npm dep**: run `npm run dev:clear` (drops the
+  named node_modules volumes) or the dep is `MODULE_NOT_FOUND`.
 
-`.gitignore` excludes all `.env*` files.
+## Environment quick reference
 
-| File | Purpose | Loaded by |
-|---|---|---|
-| `.env.dev` | Backend dev runtime (DB, JWT secrets, SMTP, Plaid creds). | `config/database.ts` (native) + `docker-compose.dev.yaml` (containerized) |
-| `.env.test` | Test DB + JWT secrets. `supabase` must be a full PG URL (`postgresql://postgres:postgres@127.0.0.1:54322/obsidian_test`). `PLAID_ENV=sandbox` + real sandbox creds needed only for `seedPlaidItem` tests. | `vitest.config.ts`, container `test` service |
-| `.env.docker.prod` | Prod container runtime. | `docker-compose.prod.yaml` |
-
-> **Leave the DB/SMTP host on `127.0.0.1` — do not "fix" it.** Native runs need loopback (Docker Desktop publishes Supabase's ports there); the containerized stack can't use loopback, so `docker-compose.dev.yaml` overrides just those two vars to `host.docker.internal` via `environment:` on the `backend`/`test` services. One set of files serves both modes. Pointing a *native* run at `host.docker.internal` makes `database.ts` time out and `server.ts` `process.exit(1)` on startup.
-
-Required Plaid env vars (backend throws at startup if missing): `PLAID_CLIENT_ID`, `PLAID_SANDBOX_SECRET` (swap `PLAID_PRODUCTION_SECRET` in prod), and `PLAID_ENCRYPTION_KEY` (32-byte hex; rotating it requires re-encrypting all `plaid_items` rows, and `.env.test` should use a different value).
-
-## Dev environments
-
-Pick one per session — **don't run both at once** (port conflicts):
-
-- **Native:** `npx supabase start` (once), then `npm run server` (backend) and `npm run dev` (frontend). Fast, IDE-debuggable.
-- **Containerized:** `npm run dev:up` — Supabase via CLI plus `backend` (port 3000) and `frontend` (port 5173) containers, both hot-reloading over bind-mounted source (polling-based watch for Windows). The Vite proxy targets `http://backend:3000` via `VITE_PROXY_TARGET`. `npm run test:docker` runs vitest in the on-demand `test` service.
-
-## Backend Architecture
-
-Layered request flow: **routes → middleware → services → repositories → pg Pool**.
-
-- `node/src/app.ts` — Express app: JSON + cookie-parser middleware, mounts `/api/v1`, has a single terminal error handler that special-cases `AppError` subclasses (returns `statusCode`, `errorCode`, `message`, `details`, `timestamp`) and falls back to `INTERNAL_ERROR` 500 for anything else.
-- `node/src/server.ts` — entry point: calls `pool.connect()` to verify DB, listens on `PORT` (default 3000), wires `SIGINT`/`SIGTERM` to a graceful shutdown that closes `pool` and forces exit after 10s.
-- `node/src/routes/V1/index.ts` — single router for all v1 endpoints. Public routes: `register`, `login`, `logout`, `password-reset`. Authenticated: `users`, `transactions`, `groups`, `accounts`, `invitations`, `plaid`. Admin: `admin`.
-- `node/src/middleware/` — `validate` (Zod schema validation), `authenticate` (see auth flow below), `authorizeAdmin`/`authorizeCreator`/`authorizeMember` (role gates), `attachFreshToken`.
-- `node/src/services/` — business logic. `services/auth/` contains `loginService`, `logoutService`, `registrationService`, `refreshService`, `passwordResetService`.
-- `node/src/repository/` — all SQL lives here. One file per table/aggregate. Repositories use the shared `pool` from `config/database.ts`.
-- `node/src/schemas/` — Zod request schemas, consumed by the `validate` middleware.
-- `node/src/errors/` — custom `AppError` hierarchy: `AuthenticationError`, `AuthorizationError`, `ConflictError`, `DatabaseError`, `ExternalServiceError`, `NotFoundError`, `ValidationError`. Always throw these (not raw `Error`) so the central handler can format the response.
-
-### Auth flow (important)
-
-Cookie-based JWTs, not Authorization headers:
-
-- **Access token**: 15-min HS256 JWT, `req.cookies.access_token` (with optional `Bearer ` prefix). Payload is `{ userId, groupId, role }` — `groupId`/`role` come from the user's active `group_memberships` row.
-- **Refresh token**: 7-day JWT, `req.cookies.refreshToken`. Stored server-side as a SHA-256 hash in `refresh_tokens` (see `utils/hashing.ts`, `repository/refreshTokenRepository.ts`), with a `last_used_at` column tracking activity.
-- The `authenticate` middleware does **silent refresh**: on `TokenExpiredError` for the access token, it pulls the refresh cookie, calls `refreshTokens()`, sets a new access-token cookie, and continues. **Silent refresh does not rotate the refresh token** — rotating on every refresh raced concurrent requests carrying the same expired-access cookie (the first revoked the token out from under the second, forcing a re-login). Instead the same refresh token is kept; `touchRefreshToken` bumps `last_used_at` and slides the 7-day expiry, so an actively-used session survives. The refresh token is still rotated at login/logout/password-change.
-- **Activity is bumped on every authenticated request, not just on silent refresh.** Even when the access token is still valid, `authenticate` calls `recordRefreshTokenActivity()` (best-effort — it swallows errors so an activity-write failure can't 500 an otherwise-valid request), which slides `last_used_at` and the expiry. So `last_used_at` reflects real request activity, and the 30-min inactivity limit in `refreshService.ts` (`INACTIVITY_LIMIT_MS`) is measured from the last *request*. If exceeded on the next refresh, all of the user's refresh tokens are revoked.
-- **Client-side idle auto-logout**: "activity" is purely an authenticated HTTP request — there's no DOM/heartbeat tracking, and the dashboard doesn't poll. To avoid stranding a logged-in-looking page after the session dies server-side, `src/lib/api.ts` drives a timer (via `setSessionListeners`) that resets on every successful request and, after `INACTIVITY_LIMIT_MS` idle, proactively logs out (revoking server-side) and redirects to login. Any `401` also triggers the redirect. The client constant must stay in sync with the server's `INACTIVITY_LIMIT_MS`.
-- Passwords are hashed with **argon2**. Tokens (refresh + invitation + password-reset) are hashed with SHA-256 before storage.
-- Required env vars (`utils/jwt.ts` throws on import if missing): `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`. Connection string env var is `supabase` (lowercase — `config/database.ts`).
-
-### Express 5 conventions
-
-This project is on Express 5, so async route handlers do not need `try/catch` — thrown errors propagate to the error middleware automatically. Don't add wrapper utilities or try/catch boilerplate in route handlers.
-
-## Database
-
-Schema is managed via Supabase CLI migrations in `supabase/migrations/` (timestamped `.sql` files, applied in lexicographic order). Core tables:
-
-- `users`, `groups`, `group_memberships` (a user can belong to one active group at a time — `findActiveMembership` filters by `departed_at IS NULL`)
-- `accounts`, `account_members`, `account_group_visibility`, `account_transactions`, `transactions` (Plaid-shaped)
-- `plaid_items` — one row per linked bank institution per user. Stores the AES-256-GCM encrypted Plaid access token across three columns (`access_token_ciphertext`, `access_token_iv`, `access_token_tag`) and the `/transactions/sync` cursor in `transactions_cursor`.
-- `invitations`, `password_reset_tokens`, `refresh_tokens`, `audit_log`
-- RLS is enabled on most tables (`20251223001447_blanket_RLS.sql`, `20260421005059_enable_rls_refresh_tokens_audit_log.sql`)
-- A trigger revokes all refresh tokens on password change (`20260423110202_revoke_sessions_on_password_change.sql`)
-
-### Notable column conventions
-
-- `accounts.type` / `accounts.subtype` — Plaid's native account taxonomy stored verbatim. `type` is one of Plaid's 4 top-level types (`"depository" | "credit" | "loan" | "investment"`), enforced by the `valid_account_type` CHECK. `subtype` is Plaid's subtype (e.g. `"checking"`, `"credit card"`, `"401k"`) and is intentionally free-form (no DB CHECK) so a newly-added Plaid subtype never breaks an insert. `node/src/services/plaid/subtypeMap.ts` is the single source of truth for the taxonomy: it exports `ACCOUNT_TYPES` / `ACCOUNT_SUBTYPES` (consumed by both the Plaid sync path and the Zod `createAccountSchema`) and `sanitizePlaidAccountType()`, which normalizes Plaid's `type`/`subtype` and returns `null` for an unsupported top-level type (e.g. `"other"`) so the caller skips that account.
-- `transactions.amount` — stored as **positive = inflow** (income, deposits, refunds), **negative = outflow** (purchases, withdrawals). Plaid returns the opposite sign (positive = outflow), so the sync service flips the sign at insert and on every `modified` update. Manual transactions entered by the user should use the natural personal-finance sign (no flip).
-- `transactions.pending` — `true` while a transaction is still pending at the bank. Plaid's `modified` array drives the `pending=true → false` transition when a transaction posts. `account_transactions.transaction_type` (`"debit"` / `"credit"`) is derived from the stored (post-flip) amount sign.
-
-## Testing
-
-Integration tests run against a real local Postgres (Supabase CLI's bundled instance) — start it with `npx supabase start`. Native runs use `npm test`; containerized runs use `npm run test:docker` (same `127.0.0.1` → `host.docker.internal` override as the backend, see Environment files).
-
-`vitest.config.ts` calls `dotenv.config({ path: ".env.test" })` at the top of the file — this must happen before any module imports because `database.ts` creates its pool at import time. The connection string and `NODE_ENV=test` come from `.env.test`.
-
-`node/src/tests/globalSetup.ts` derives the admin connection (for the `postgres` superuser DB) from the test URL and drops/recreates the `obsidian_test` database from `supabase/migrations/*.sql` on every run. Tests are configured with `fileParallelism: false` because all projects share one database — parallel TRUNCATE/INSERT would deadlock. Keep this in mind when adding new tests.
-
-### Test helpers
-
-`node/src/tests/helpers/dbHelper.ts` — `truncateAll`, `seedUser`, `seedGroup`, `seedAccount`, `seedTransaction`, `seedAccountMember`, `seedAccountTransaction`, `seedBalanceSnapshot`, `seedAccountGroupVisibility`. Call `seedGroup(userId)` before `seedPlaidItem` — `exchangePublicToken` writes `account_group_visibility` rows that require a group FK.
-
-`node/src/tests/helpers/plaidHelper.ts` — `seedPlaidItem(userId, groupId, options?)`. Makes real Plaid sandbox API calls: creates a sandbox public token, runs the full `exchangePublicToken` service (accounts + initial transaction sync), and retries sync with backoff if transactions aren't ready yet (~8–10s per call). Guard throws if `PLAID_ENV !== "sandbox"`.
-
-### Notable test coverage
-
-Each repository/service has a matching `*.test.ts` (one `vitest.config.ts` project each — see that file for the list). Net-worth coverage lives in `balanceSnapshotRepository.test.ts` (project `balanceSnapshots`): `upsertAccountSnapshot` (one row per account per day, null no-op) plus the net-worth series (last-observation carry-forward + credit/loan sign).
-
-### Plaid integration test pattern
-
-Use `beforeAll` (not `beforeEach`) to create one Plaid item per `describe` block — each `seedPlaidItem` call takes ~8–10s due to async sandbox processing. Share that item across read-only `it` cases. Tests that mutate state (deactivate, delete) belong in their own `describe` with `beforeEach(truncateAll)` + direct seeds.
-
-`testTimeout` must be set inside each project entry in `vitest.config.ts` — root-level `testTimeout` is not inherited by project configs in vitest 4.x.
-
-## Email
-
-`node/src/config/email.ts` configures nodemailer. In dev/test it points at Supabase's bundled SMTP (port 54325, viewable via Mailpit). In production it requires `SMTP_HOST`, `SMTP_PORT`, `EMAIL_FROM`, and SMTP credentials, and uses `secure: true`.
-
-## Deployment
-
-`Dockerfile` is a multi-stage build that compiles **only** the backend (`npm run build:server`) into `node/dist`, copies it to `/usr/local/app/build`, and runs `node build/server.js`. The frontend isn't deployed via this Dockerfile. `docker-compose.prod.yaml` reads `.env.docker.prod` and exposes port 3000.
-
-`Dockerfile.dev` and `Dockerfile.frontend.dev` are dev-only counterparts used by `docker-compose.dev.yaml` — they install all deps and run nodemon / vite respectively against bind-mounted source. Don't use them for production builds.
-
-## Group Lifecycle
-
-Every user always belongs to exactly one active group. The lifecycle rules are:
-
-- **Registration** — `registrationService.ts` calls `createPersonalGroupForUser` immediately after creating the user row. The resulting group (`"<first_name>'s Household"`, `role='creator'`) is written into the access token JWT so the user has a valid `groupId` from the very first request.
-- **Invite accept** — `acceptInvitationAndJoinGroup` (in `invitationRepository.ts`) runs in one transaction: it locks the accepter's membership row, verifies their current group has only them as a member and they are the `creator`, soft-departs the membership, hard-deletes the auto-group (CASCADE cleans up `account_group_visibility`), and inserts a new `group_memberships` row in the inviter's group. The accepter's accounts survive (they remain in `account_members`) but are **not** automatically shared into the new household — visibility must be explicitly granted.
-- **Leave / Kick / Group delete** — all three paths call `unlinkUserAccountsFromGroup` to remove the departing user's accounts from the household's visibility, then call `createPersonalGroupForUser` to restore solo state. `createPersonalGroupForUser` creates the group + membership and re-inserts `account_group_visibility` rows for every account the user owns, so their accounts are immediately visible in their restored personal group.
-- **Stale JWTs after kick** — a kicked user's access token is valid for up to 15 min with a stale `groupId`. This self-corrects on the next silent refresh because `refreshService.ts` re-queries `findActiveMembership`.
-
-`createPersonalGroupForUser` in `groupRepository.ts` is the single source of truth for the solo state — call it wherever solo state needs to be restored; don't duplicate the group+membership+visibility logic inline.
-
-## Account Visibility
-
-`account_group_visibility` controls which accounts a group can see on the dashboard. Key rules:
-
-- Linking a bank via Plaid writes visibility rows only for the user's **own current group** (their personal household at link time).
-- Joining a new household via invite does **not** auto-share the joining user's accounts — the CASCADE delete of their old auto-group removes the old visibility rows, and no new ones are inserted for the new group.
-- Users explicitly share/unshare accounts with their group via `POST /api/v1/accounts/:id/share` and `DELETE /api/v1/accounts/:id/share`. Only an `owner` or `joint` `account_members` row grants permission to change visibility.
-- Repository functions: `accountRepository.shareAccountWithGroup` and `accountRepository.unshareAccountFromGroup`.
-
-## Plaid Integration
-
-Files under `node/src/services/plaid/` and `node/src/routes/V1/plaidRoutes.ts` implement the bank-linking flow.
-
-### Link flow (one bank)
-
-1. `POST /api/v1/plaid/link-token` → `linkTokenService.createLinkToken(userId)` — calls Plaid `/link/token/create` and returns a short-lived `link_token` to the frontend.
-2. Frontend opens Plaid Link (via `react-plaid-link`). On success it receives a one-time `public_token`.
-3. `POST /api/v1/plaid/exchange-token` → `itemService.exchangePublicToken(userId, groupId, publicToken)`:
-   - Exchanges `public_token` for a long-lived `access_token` + `item_id`.
-   - Fetches accounts (with balances, names, mask) and institution name.
-   - AES-256-GCM encrypts the `access_token` via `node/src/utils/plaidCrypto.ts`.
-   - In one Postgres transaction: inserts `plaid_items`, inserts `accounts` (with Plaid's `type`/`subtype` taxonomy, normalized via `sanitizePlaidAccountType`), inserts `account_members` (`ownership_type='owner'`), inserts `account_group_visibility` for the user's current group.
-   - Outside that transaction, snapshots each account's link-time balance and calls `syncTransactions` for the initial pull (cursor `null` → full available history; see Transaction sync).
-4. Multi-bank: the frontend re-mints a fresh `link_token` (step 1) for each additional institution so Plaid Link can be re-opened. Each successful exchange runs step 3 independently.
-
-### Transaction sync
-
-`node/src/services/plaid/transactionsSyncService.ts` — `syncTransactions(plaidItemRowId, accessToken, userId, startCursor?)`:
-- Loops `/transactions/sync` until `has_more=false`, accumulating `added`, `modified`, `removed`.
-- **added**: INSERT into `transactions` + `account_transactions`. `ON CONFLICT (plaid_id) DO NOTHING` makes retries idempotent.
-- **modified**: UPDATE the existing row (handles pending → posted transitions and amount/date corrections).
-- **removed**: DELETE by `plaid_id` (CASCADE removes `account_transactions` rows).
-- Saves the final `next_cursor` to `plaid_items.transactions_cursor` after a successful commit, so the next sync call picks up only new deltas.
-- The cursor is `null` on first sync — Plaid returns all available history (typically ~24 months) and the 30-day window is enforced by Plaid's sandbox default, not by this code.
-
-### Sync cadence & balance refresh
-
-A `node-cron` job (`scheduledSyncService.startScheduledSync`) ticks **every 30 minutes**, but a group only syncs when **due** — `getGroupsDueForSync` returns groups where `last_synced_at IS NULL` or `last_synced_at + INTERVAL '7 hours' <= NOW()`. So the effective per-household cadence is **~7 hours**, with 30 min as the polling granularity. `claimGroupSync`/`releaseGroupSync` use the `groups.is_syncing` flag as a lock (one sync per group at a time); `resetStaleGroupLocks` clears locks older than 10 min left by a crashed run. `POST /api/v1/plaid/sync` runs the same work on demand, bypassing the 7-hour gate.
-
-Per item, each sync calls `balanceRefreshService.refreshItemBalances` (Plaid `accountsBalanceGet` → updates `accounts.balance_current`/`balance_available`) **before** `syncTransactions`. This is the only thing that refreshes balances — `syncTransactions` touches transactions only. Balance refresh is best-effort (logged, never blocks the transaction sync).
-
-### Net worth snapshots
-
-`account_balance_snapshots` (one row per account per day, `UNIQUE(account_id, snapshot_date)`) feeds the dashboard's net-worth-over-time chart. `balanceSnapshotRepository.upsertAccountSnapshot` upserts the day's row; it's called from the balance refresh, the Plaid link insert (`itemService`), and manual account create/edit (`accountService`). Net worth = assets − liabilities (credit/loan negate). `dashboardRepository.getUserNetWorthSeries`/`getGroupNetWorthSeries` build a monthly series with last-observation carry-forward; the line starts when snapshots begin (no historical backfill).
-
-### Encryption (`node/src/utils/plaidCrypto.ts`)
-
-- `encryptToken(plaintext)` → `{ ciphertext, iv, tag }` — all base64. Uses a fresh 12-byte random IV per call.
-- `decryptToken({ ciphertext, iv, tag })` → plaintext string.
-- Key is read from `PLAID_ENCRYPTION_KEY` (32-byte hex). The module throws at import if the key is missing or wrong length — this is intentional (fail fast on misconfiguration).
-- Rotating the key requires a migration that re-encrypts all rows with the new key before the old key is removed from env.
+Required: `supabase` (lowercase, PG URL), `JWT_ACCESS_SECRET`,
+`JWT_REFRESH_SECRET`, `PLAID_CLIENT_ID`, `PLAID_SANDBOX_SECRET` (prod:
+`PLAID_PRODUCTION_SECRET`), `PLAID_ENCRYPTION_KEY` (32-byte hex).
+Optional switches: `REDIS_URL`, `WORKER_ROLE=scheduler`, `SQS_AUDIT_QUEUE_URL`,
+`AWS_ENDPOINT_URL` (LocalStack; unset in prod). Details: docs/environment.md.

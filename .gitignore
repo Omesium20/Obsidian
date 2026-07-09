@@ -7,12 +7,8 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
 # Editor directories and files
+.claude
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -30,3 +26,9 @@ private_helpers/
 
 # ignore files
 .dockerignore
+
+#otherd
+node_modules
+dist
+dist-ssr
+*.local
