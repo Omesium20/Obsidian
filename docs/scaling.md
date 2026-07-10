@@ -56,13 +56,20 @@ makes that safe and what to actually do.
   when instance count grows. (Related deferred plan: swap the Plaid sync
   flag-lock for `pg_advisory_lock` once a pooler is in place.)
 
-## Single-node mode still works
+## Single-node mode still works — and is what production runs
 
 All of this is opt-in. Leave `REDIS_URL` unset and one API process behaves
 exactly as the original single-instance build — in-process events, fail-open
 rate limiting, pass-through cache ([redis.md](redis.md)). The scheduler worker is
 still worth running as a separate process, but `startScheduledSync` can be wired
 back into `server.ts` for a truly minimal deployment.
+
+**Current production is deliberately this single-node shape** — one EC2 instance
+running the API, scheduler, and Redis as three containers behind CloudFront
+([deployment.md](deployment.md)) — because the expected user base is tiny. The
+multi-node shape above is the pre-built escape hatch, not the current
+deployment: to scale, move Redis off-box, add a load balancer (recount the
+`trust proxy` hop), and run N API instances with exactly one scheduler.
 
 ## Rules to preserve when adding features
 

@@ -13,6 +13,12 @@ back to in-process delivery, the rate limiter fails open, and the cache becomes 
 pass-through. A single-node deployment can ignore Redis entirely and only switch
 it on when scaling out. `redisEnabled` is the flag callers branch on.
 
+In production Redis runs as a container on the same EC2 instance as the API and
+scheduler ([deployment.md](deployment.md)) — reachable only inside the compose
+network, no persistence (its contents are best-effort and rebuild from
+Postgres). If that container dies the app degrades per the semantics above;
+it moves to its own node only when the API scales past one instance.
+
 Unlike the pg pool (which `process.exit(1)`s on failure because the DB is a hard
 dependency), **Redis errors only log** — a Redis outage must degrade these
 features, never take the API down. Correctness-critical locking deliberately stays

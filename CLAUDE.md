@@ -45,7 +45,7 @@ transactions, subscriptions, and net worth. Full-stack TypeScript, one repo:
 | [group-lifecycle.md](docs/group-lifecycle.md)             | Registration, invites, leave/kick, personal-group restore                              |
 | [account-visibility.md](docs/account-visibility.md)       | Sharing/privacy, co-ownership, deletion/transfer                                       |
 | [testing.md](docs/testing.md)                             | Vitest projects, global setup, helpers, Plaid test pattern                             |
-| [deployment.md](docs/deployment.md)                       | Dockerfile stages, prod compose, what prod still needs                                 |
+| [deployment.md](docs/deployment.md)                       | Production architecture (CloudFront + S3 + single EC2), Dockerfile stages, prod compose |
 | [scaling.md](docs/scaling.md)                             | Horizontal scaling: what makes it safe, deployment shape, rules                        |
 | [email.md](docs/email.md)                                 | Nodemailer config, dev Mailpit vs prod SMTP                                            |
 

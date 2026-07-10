@@ -1,11 +1,76 @@
+name: obsidian-prod
+
+# Single-node production stack: all three containers run on one EC2 instance
+# behind CloudFront (see docs/deployment.md). Compose is the process supervisor —
+# restart policies + healthchecks stand in for an orchestrator.
 services:
     backend:
         build: .
         container_name: obsidian-backend-prod
+        # Only published port on the box: CloudFront's /api/* behavior originates
+        # to the instance on :3000. The security group restricts ingress to the
+        # CloudFront managed prefix list.
         ports:
             - "3000:3000"
         env_file:
             - .env.docker.prod
         restart: unless-stopped
         environment:
-            - NODE_ENV=production
+            NODE_ENV: production
+            # In-cluster Redis (same instance, separate container). Best-effort by
+            # design: if the redis container is down the app degrades gracefully
+            # (fail-open rate limits, pass-through cache, in-process events), so
+            # there is deliberately no hard depends_on condition.
+            REDIS_URL: "redis://redis:6379"
+        depends_on:
+            - redis
+        healthcheck:
+            test:
+                - "CMD-SHELL"
+                - "node -e \"require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""
+            interval: 30s
+            timeout: 3s
+            retries: 3
+            start_period: 15s
+
+    # Scheduler worker: same image, runs the compiled worker entrypoint instead of
+    # the server. Exactly ONE instance — it owns all cron work (Plaid sync, audit
+    # shipping, retention). Worker down = stale Plaid data + audit outbox
+    # accumulating in Postgres (nothing lost); the API keeps serving.
+    scheduler:
+        build: .
+        command: ["node", "build/src/worker.js"]
+        container_name: obsidian-scheduler-prod
+        env_file:
+            - .env.docker.prod
+        restart: unless-stopped
+        environment:
+            NODE_ENV: production
+            REDIS_URL: "redis://redis:6379"
+            # Publisher-only: PUBLISHes sync events, holds no SSE clients, skips
+            # the Redis subscriber connection (docs/redis.md).
+            WORKER_ROLE: "scheduler"
+            PORT: "3005"
+        depends_on:
+            - redis
+        healthcheck:
+            test:
+                - "CMD-SHELL"
+                - "node -e \"require('http').get('http://localhost:3005/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""
+            interval: 30s
+            timeout: 3s
+            retries: 3
+            start_period: 15s
+
+    # Redis backplane (pub/sub, rate limits, cache). Not published outside the
+    # compose network — only the backend and scheduler reach it. No persistence:
+    # everything in it is best-effort/ephemeral and rebuilds from Postgres.
+    redis:
+        image: redis:7-alpine
+        container_name: obsidian-redis-prod
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 30s
+            timeout: 3s
+            retries: 3
