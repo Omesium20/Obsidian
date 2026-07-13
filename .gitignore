@@ -32,3 +32,11 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Terraform — state holds resource attributes (incl. secrets) in plaintext
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+terraform/modules/*/build/

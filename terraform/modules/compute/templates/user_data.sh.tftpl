@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Bootstrap for the Obsidian app node. Rendered by Terraform templatefile:
+# dollar-brace is substituted at plan time; double-dollar escapes it for bash.
+# Runs once per instance (cloud-init); log: /var/log/cloud-init-output.log.
+set -euxo pipefail
+
+# ── Base packages ────────────────────────────────────────────────────────────
+dnf -y install docker git jq amazon-cloudwatch-agent
+
+# Container log rotation. Shipping container logs to CloudWatch (awslogs
+# driver) is a docker-compose.prod.yaml change — the instance role already
+# permits log groups under /${name_prefix}/.
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'JSON'
+{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+JSON
+systemctl enable --now docker
+
+# docker compose CLI plugin (AL2023 packages docker but not compose)
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-aarch64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# ── Swap: build headroom — `compose up --build` compiles the backend on-box,
+# and 2 GiB of RAM (t4g.small) alone is tight for npm ci + tsc ────────────────
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+swapon -a
+
+# ── Data volume -> /opt/obsidian. Attached as /dev/sdf, surfaces as nvme1n1
+# on Nitro; may attach after boot starts, so wait for it ─────────────────────
+DATA_DEV=/dev/nvme1n1
+for _ in $(seq 1 60); do
+  [ -b "$DATA_DEV" ] && break
+  sleep 5
+done
+[ -b "$DATA_DEV" ]
+# Format only a blank volume — never an existing filesystem (reattach case).
+blkid "$DATA_DEV" || mkfs -t xfs "$DATA_DEV"
+mkdir -p /opt/obsidian
+UUID=$(blkid -s UUID -o value "$DATA_DEV")
+grep -q "$UUID" /etc/fstab || echo "UUID=$UUID /opt/obsidian xfs defaults,nofail 0 2" >> /etc/fstab
+mount -a
+
+# ── CloudWatch agent: memory + disk (CPU/network come free from EC2) ─────────
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'JSON'
+{
+  "metrics": {
+    "namespace": "CWAgent",
+    "append_dimensions": { "InstanceId": "$${aws:InstanceId}" },
+    "aggregation_dimensions": [["InstanceId", "path"]],
+    "metrics_collected": {
+      "mem":  { "measurement": ["mem_used_percent"] },
+      "disk": {
+        "measurement": ["used_percent"],
+        "resources": ["/", "/opt/obsidian"],
+        "drop_device": true
+      }
+    }
+  }
+}
+JSON
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# ── Env renderer: Secrets Manager -> .env.docker.prod (rerun after rotating
+# a secret: obsidian-render-env && docker compose ... up -d) ─────────────────
+cat > /usr/local/bin/obsidian-render-env <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+ENV_FILE=/opt/obsidian/app/.env.docker.prod
+
+aws secretsmanager get-secret-value \
+  --secret-id "${app_secret_arn}" \
+  --query SecretString --output text --region "${aws_region}" \
+  | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$ENV_FILE"
+
+{
+  echo "PLAID_ENV=production"
+  echo "AWS_REGION=${aws_region}"
+  echo "SQS_AUDIT_QUEUE_URL=${audit_queue_url}"
+  echo "ORIGIN_VERIFY_SECRET=$(aws secretsmanager get-secret-value \
+    --secret-id "${origin_verify_secret_arn}" \
+    --query SecretString --output text --region "${aws_region}")"
+} >> "$ENV_FILE"
+
+chmod 600 "$ENV_FILE"
+SCRIPT
+chmod +x /usr/local/bin/obsidian-render-env
+
+# ── Container health -> CloudWatch (Obsidian/Containers, agreed design) ──────
+cat > /usr/local/bin/obsidian-container-health <<'SCRIPT'
+#!/usr/bin/env bash
+# No -e: a missing container must still publish 0, not abort the loop.
+set -uo pipefail
+for svc in backend scheduler redis; do
+  status=$(docker inspect --format '{{.State.Health.Status}}' "obsidian-$svc-prod" 2>/dev/null || echo missing)
+  value=0
+  [ "$status" = "healthy" ] && value=1
+  aws cloudwatch put-metric-data --region "${aws_region}" \
+    --namespace "Obsidian/Containers" \
+    --metric-name ContainerHealthy \
+    --dimensions Service="$svc" \
+    --value "$value"
+done
+SCRIPT
+chmod +x /usr/local/bin/obsidian-container-health
+
+cat > /etc/systemd/system/obsidian-container-health.service <<'UNIT'
+[Unit]
+Description=Publish docker container health to CloudWatch
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/obsidian-container-health
+UNIT
+
+cat > /etc/systemd/system/obsidian-container-health.timer <<'UNIT'
+[Unit]
+Description=Container health metric every minute
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=60
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now obsidian-container-health.timer
+
+# ── App: clone + first deploy ────────────────────────────────────────────────
+# Best-effort: a private repo fails the anonymous clone. In that case, SSM in,
+# clone to /opt/obsidian/app (deploy key / token), then:
+#   obsidian-render-env && cd /opt/obsidian/app && docker compose -f docker-compose.prod.yaml up -d --build
+%{ if repo_url != "" ~}
+if [ ! -d /opt/obsidian/app/.git ]; then
+  git clone "${repo_url}" /opt/obsidian/app \
+    || echo "[bootstrap] clone failed (private repo?) — finish the first deploy manually, see comment above"
+fi
+%{ endif ~}
+if [ -f /opt/obsidian/app/docker-compose.prod.yaml ]; then
+  /usr/local/bin/obsidian-render-env
+  cd /opt/obsidian/app
+  docker compose -f docker-compose.prod.yaml up -d --build
+fi

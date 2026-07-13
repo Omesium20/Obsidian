@@ -110,7 +110,8 @@ process supervisor (no orchestrator).
 ## Provisioned separately from this repo
 
 - **Postgres** — hosted Supabase (the `supabase` connection string).
-- **S3 + CloudFront + EC2 + IAM** — Terraform (`terraform/`).
+- **S3 + CloudFront + EC2 + IAM** — Terraform (`terraform/` — module layout,
+  state-bucket bootstrap, and apply workflow in [terraform.md](terraform.md)).
 - **SMTP** — real credentials via `SMTP_HOST`/`SMTP_PORT`/`EMAIL_FROM`
   ([email.md](email.md)).
 - **AWS SQS/Lambda/S3** — only for audit export; `AWS_ENDPOINT_URL` stays unset

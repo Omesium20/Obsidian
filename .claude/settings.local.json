@@ -73,7 +73,10 @@
       "Bash(npm audit *)",
       "PowerShell(npm run *)",
       "PowerShell(npx vitest run --project authEvents)",
-      "PowerShell(git *)"
+      "PowerShell(git *)",
+      "PowerShell(terraform -chdir=terraform init -backend=false -input=false -upgrade)",
+      "PowerShell(terraform -chdir=terraform fmt -recursive)",
+      "PowerShell(terraform -chdir=terraform validate)"
     ]
   }
 }
