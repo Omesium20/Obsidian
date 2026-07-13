@@ -40,6 +40,12 @@ variable "domain_name" {
   default     = "obsidian-secured.com"
 }
 
+variable "github_repo" {
+  description = "GitHub org/repo for the CI OIDC trust conditions"
+  type        = string
+  default     = "Omesium20/Obsidian"
+}
+
 variable "repo_url" {
   description = "Git URL the instance clones on first boot (empty = clone manually via SSM)"
   type        = string

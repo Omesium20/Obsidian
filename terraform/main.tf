@@ -33,6 +33,13 @@ module "email" {
   domain_name = var.domain_name
 }
 
+module "cicd" {
+  source = "./modules/cicd"
+
+  name_prefix = local.name_prefix
+  github_repo = var.github_repo
+}
+
 module "audit_pipeline" {
   source = "./modules/audit_pipeline"
 

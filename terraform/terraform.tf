@@ -15,14 +15,11 @@ terraform {
   }
   required_version = ">= 1.10"
 
-  # Remote state. Create the bucket once by hand (see terraform/README.md),
-  # then uncomment and run `terraform init -migrate-state`.
-  #
-  # backend "s3" {
-  #   bucket       = "obsidian-terraform-state"   # bucket names are global — adjust if taken
-  #   key          = "prod/terraform.tfstate"
-  #   region       = "us-east-1"
-  #   encrypt      = true
-  #   use_lockfile = true                          # native S3 locking, no DynamoDB
-  # }
+  backend "s3" {
+    bucket       = "obsidian-financial-terraform-state"
+    key          = "prod/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true # native S3 locking, no DynamoDB
+  }
 }

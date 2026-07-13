@@ -19,6 +19,7 @@ The root is the prod composition; every resource lives in a local module:
 | `audit_pipeline` | audit-export.fifo + DLQ, archiver Lambda, archive S3 bucket                                          |
 | `frontend`       | Assets S3 bucket, ACM cert, CloudFront distribution (S3 default + `/api/*` origin), Route 53 aliases |
 | `monitoring`     | SNS alerts topic, log groups, status-check / container-health / DLQ / Lambda alarms                  |
+| `cicd`           | GitHub OIDC provider + the plan/deploy roles for Actions ([ci-cd.md](ci-cd.md))                      |
 
 Status: all modules implemented. `terraform plan` shows the full stack
 (~60 resources); see the bootstrap list below for the manual one-time steps.
@@ -28,10 +29,10 @@ Status: all modules implemented. `terraform plan` shows the full stack
 1. **State bucket** (can't manage its own backend — chicken and egg):
 
     ```bash
-    aws s3api create-bucket --bucket obsidian-terraform-state --region us-east-1
-    aws s3api put-bucket-versioning --bucket obsidian-terraform-state \
+    aws s3api create-bucket --bucket obsidian-financial-terraform-state --region us-east-1
+    aws s3api put-bucket-versioning --bucket obsidian-financial-terraform-state \
       --versioning-configuration Status=Enabled
-    aws s3api put-public-access-block --bucket obsidian-terraform-state \
+    aws s3api put-public-access-block --bucket obsidian-financial-terraform-state \
       --public-access-block-configuration \
       BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
     ```

@@ -1,0 +1,53 @@
+# Reusable test gate — the single definition of "passing" shared by ci.yml
+# (PRs) and deploy.yml (main). See docs/ci-cd.md.
+name: test
+
+on:
+  workflow_call:
+    secrets:
+      PLAID_CLIENT_ID:
+        required: true
+      PLAID_SANDBOX_SECRET:
+        required: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase local stack (test DB + SMTP)
+        run: supabase start
+
+      # Same shape as a developer's .env.test (docs/environment.md). The JWT
+      # and encryption values are throwaway test fixtures — the DB is created
+      # and dropped inside this job — so hardcoding them here is deliberate.
+      # Only the Plaid sandbox credentials are real (seedPlaidItem tests).
+      - name: Write .env.test
+        run: |
+          cat > .env.test <<'EOF'
+          supabase=postgresql://postgres:postgres@127.0.0.1:54322/obsidian_test
+          JWT_ACCESS_SECRET=ci-test-access-secret-not-used-outside-this-job
+          JWT_REFRESH_SECRET=ci-test-refresh-secret-not-used-outside-this-job
+          PLAID_ENV=sandbox
+          PLAID_ENCRYPTION_KEY=5f4dcc3b5aa765d61d8327deb882cf992b7e151628aed2a6abf7158809cf4f3c
+          EOF
+          {
+            echo "PLAID_CLIENT_ID=${{ secrets.PLAID_CLIENT_ID }}"
+            echo "PLAID_SANDBOX_SECRET=${{ secrets.PLAID_SANDBOX_SECRET }}"
+          } >> .env.test
+
+      - run: npm test

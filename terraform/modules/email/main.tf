@@ -25,6 +25,10 @@ resource "aws_route53_record" "ses_verification" {
   type    = "TXT"
   ttl     = 600
   records = [aws_ses_domain_identity.main.verification_token]
+
+  # The identity was first created via the console, which may have published
+  # this record already; the value is identical, so overwriting is safe.
+  allow_overwrite = true
 }
 
 # Blocks until SES sees the TXT record — downstream resources can rely on a
@@ -48,6 +52,10 @@ resource "aws_route53_record" "dkim" {
   type    = "CNAME"
   ttl     = 600
   records = ["${aws_ses_domain_dkim.main.dkim_tokens[count.index]}.dkim.amazonses.com"]
+
+  # Console "Easy DKIM" may have auto-published these CNAMEs; same tokens,
+  # same values — safe to overwrite.
+  allow_overwrite = true
 }
 
 # ── Custom MAIL FROM + SPF + DMARC (deliverability) ──────────────────────────

@@ -23,6 +23,21 @@ output "cloudfront_domain" {
   value       = module.frontend.distribution_domain
 }
 
+output "distribution_id" {
+  description = "CloudFront distribution id (cache invalidation on deploy)"
+  value       = module.frontend.distribution_id
+}
+
+output "gha_plan_role_arn" {
+  description = "Set as GitHub secret AWS_PLAN_ROLE_ARN"
+  value       = module.cicd.plan_role_arn
+}
+
+output "gha_deploy_role_arn" {
+  description = "Set as GitHub secret AWS_DEPLOY_ROLE_ARN"
+  value       = module.cicd.deploy_role_arn
+}
+
 output "assets_bucket" {
   description = "S3 bucket for the built frontend (sync dist/ here on deploy)"
   value       = module.frontend.assets_bucket

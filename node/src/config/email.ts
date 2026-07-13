@@ -15,6 +15,9 @@ if (isProduction) {
 	if (!process.env.EMAIL_FROM) {
 		throw new Error("EMAIL_FROM environment variable is not defined");
 	}
+	if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+		throw new Error("SMTP_USER/SMTP_PASS environment variables are not defined");
+	}
 }
 
 // Uses production environment variables if not uses

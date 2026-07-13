@@ -47,6 +47,7 @@ transactions, subscriptions, and net worth. Full-stack TypeScript, one repo:
 | [testing.md](docs/testing.md)                             | Vitest projects, global setup, helpers, Plaid test pattern                             |
 | [deployment.md](docs/deployment.md)                       | Production architecture (CloudFront + S3 + single EC2), Dockerfile stages, prod compose |
 | [terraform.md](docs/terraform.md)                         | AWS infrastructure-as-code: module layout, state bootstrap, apply workflow             |
+| [ci-cd.md](docs/ci-cd.md)                                 | GitHub Actions: PR plan flow, main deploy flow, OIDC roles, repo secrets               |
 | [scaling.md](docs/scaling.md)                             | Horizontal scaling: what makes it safe, deployment shape, rules                        |
 | [email.md](docs/email.md)                                 | Nodemailer config, dev Mailpit vs prod SMTP                                            |
 

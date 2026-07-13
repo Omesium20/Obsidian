@@ -1,0 +1,135 @@
+# PR pipeline: tests gate everything; then build artifacts prove the commit
+# ships, and a read-only terraform plan is posted on the PR for review next to
+# the code diff. Nothing here can write to AWS — the plan role is read-only
+# and runs with -lock=false. See docs/ci-cd.md.
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Public repo: fork PRs run without secrets or OIDC tokens (GitHub policy),
+    # so they'd fail red for the wrong reason. Skipping test here cascades to
+    # build/plan via needs:. Same-repo PRs are unaffected.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/test.yml
+    secrets:
+      PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+      PLAID_SANDBOX_SECRET: ${{ secrets.PLAID_SANDBOX_SECRET }}
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build frontend
+        run: npm run build
+      - name: Build backend
+        run: npm run build:server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: node/dist/
+          retention-days: 7
+
+  plan:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # mint the OIDC token for AWS
+      pull-requests: write # post the plan comment
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform -chdir=terraform init -input=false
+
+      - name: terraform fmt
+        run: terraform -chdir=terraform fmt -check -recursive
+
+      - name: terraform validate
+        run: terraform -chdir=terraform validate
+
+      # -lock=false: the read-only role cannot (and must not) take the state
+      # lock. This plan is informational; main re-plans before applying.
+      - name: terraform plan
+        run: |
+          terraform -chdir=terraform plan -input=false -lock=false -no-color \
+            | tee plan.txt
+
+      # Text output only — a binary plan file embeds state, which contains
+      # sensitive values; `terraform plan` text masks them.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: plan.txt
+          retention-days: 7
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync('plan.txt', 'utf8');
+            const limit = 60000; // GitHub comment cap is 65536 chars
+            if (plan.length > limit) {
+              plan = plan.slice(0, limit) +
+                '\n... (truncated - full plan in the terraform-plan artifact)';
+            }
+            const body = [
+              '### Terraform plan',
+              '<details><summary>Show plan</summary>',
+              '',
+              '```',
+              plan,
+              '```',
+              '</details>',
+            ].join('\n');
+            // Update the previous plan comment instead of stacking new ones.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const previous = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.startsWith('### Terraform plan')
+            );
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
