@@ -4,6 +4,7 @@ import AppError from "./errors/appError.js";
 import ValidationError from "./errors/validationError.js";
 import v1Routes from "./routes/V1/index.js";
 import helmet from "helmet";
+import { verifyOrigin } from "./middleware/verifyOrigin.js";
 
 const app = express();
 
@@ -36,8 +37,10 @@ app.get("/", (_req, res) => {
 	res.send("Hello world!");
 });
 
-// API v1 routes
-app.use("/api/v1", v1Routes);
+// API v1 routes. verifyOrigin (CloudFront shared-secret header; no-op unless
+// ORIGIN_VERIFY_SECRET is set) guards only this tree — /health above stays
+// open for the compose healthcheck, which hits the box directly.
+app.use("/api/v1", verifyOrigin, v1Routes);
 
 // ============================================
 // Error Handling

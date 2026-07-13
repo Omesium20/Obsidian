@@ -151,6 +151,15 @@ export default defineConfig({
 					],
 				},
 			},
+			{
+				test: {
+					name: "verifyOrigin",
+					testTimeout: 60000,
+					include: [
+						"node/src/tests/middleware/verifyOrigin.test.ts",
+					],
+				},
+			},
 		],
 	},
 });

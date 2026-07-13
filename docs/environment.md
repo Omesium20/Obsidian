@@ -40,6 +40,7 @@ never overrides an already-set var).
 | `REDIS_URL` | Enables the Redis backplane: SSE pub/sub fan-out, distributed rate limiting, cache-aside cache. See [redis.md](redis.md). |
 | `WORKER_ROLE=scheduler` | Marks the process publisher-only: no Redis subscriber connection is opened. Set on the scheduler worker only. |
 | `SQS_AUDIT_QUEUE_URL` | Enables the audit→SQS shipper (scheduler worker). See [audit-pipeline.md](audit-pipeline.md). |
+| `ORIGIN_VERIFY_SECRET` | Enforces the CloudFront `X-Origin-Verify` shared-secret header on `/api/v1` (403 on mismatch; `/health` exempt). Production only — terraform renders it into `.env.docker.prod`. See [deployment.md](deployment.md). |
 | `AWS_ENDPOINT_URL` | Points the AWS SDK at LocalStack (dev). Unset in prod → real AWS via the default credential chain (EC2 instance role). |
 | `AWS_REGION` | Defaults to `us-east-1`. |
 | `PORT` | 3000 (API) / 3005 (worker) by default. |

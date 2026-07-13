@@ -51,6 +51,16 @@ a separate `api.` subdomain (that would break cookies and the relative paths).
   `X-Forwarded-For`, matching `app.set("trust proxy", 1)`. Adding another
   forwarding layer (ALB, nginx) later means bumping that hop count or IP-keyed
   rate limits break.
+- **Origin verification**: CloudFront injects a shared-secret `X-Origin-Verify`
+  header on every `/api/*` origin request; terraform renders the same secret
+  into `.env.docker.prod` as `ORIGIN_VERIFY_SECRET`. When that env var is set,
+  the `verifyOrigin` middleware (`node/src/middleware/verifyOrigin.ts`, mounted
+  on `/api/v1` in `app.ts`) rejects requests whose header doesn't match
+  (timing-safe compare, 403) — so hitting :3000 directly bypassing CloudFront
+  gets refused. Unset (dev/test) it's a no-op, per the optional-infra pattern.
+  `/health` sits outside the guard: the compose healthcheck calls it locally
+  without the header. Rotating the secret = update the CloudFront custom origin
+  header + `.env.docker.prod`, then restart the backend.
 
 ### The EC2 instance
 
