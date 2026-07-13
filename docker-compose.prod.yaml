@@ -15,6 +15,16 @@ services:
         env_file:
             - .env.docker.prod
         restart: unless-stopped
+        # Ship container logs to CloudWatch via the docker daemon (credentials
+        # come from the EC2 instance role). Log groups are pre-created by the
+        # Terraform monitoring module — the instance role has CreateLogStream/
+        # PutLogEvents on /obsidian-prod/* but NOT CreateLogGroup, so the group
+        # must exist before the container starts.
+        logging:
+            driver: awslogs
+            options:
+                awslogs-group: "/obsidian-prod/backend"
+                awslogs-region: "us-east-1"
         environment:
             NODE_ENV: production
             # In-cluster Redis (same instance, separate container). Best-effort by
@@ -44,6 +54,11 @@ services:
         env_file:
             - .env.docker.prod
         restart: unless-stopped
+        logging:
+            driver: awslogs
+            options:
+                awslogs-group: "/obsidian-prod/scheduler"
+                awslogs-region: "us-east-1"
         environment:
             NODE_ENV: production
             REDIS_URL: "redis://redis:6379"
@@ -69,6 +84,11 @@ services:
         image: redis:7-alpine
         container_name: obsidian-redis-prod
         restart: unless-stopped
+        logging:
+            driver: awslogs
+            options:
+                awslogs-group: "/obsidian-prod/redis"
+                awslogs-region: "us-east-1"
         healthcheck:
             test: ["CMD", "redis-cli", "ping"]
             interval: 30s

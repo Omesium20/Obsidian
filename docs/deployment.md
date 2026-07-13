@@ -117,6 +117,28 @@ for both Node processes, reads `.env.docker.prod`, and runs three services:
 All services: `restart: unless-stopped` + healthchecks, so compose acts as the
 process supervisor (no orchestrator).
 
+### Container logs → CloudWatch
+
+All three prod services use the **`awslogs` logging driver**: the docker daemon
+ships each container's stdout/stderr to CloudWatch Logs in `us-east-1`, one log
+group per service:
+
+- `/obsidian-prod/backend`
+- `/obsidian-prod/scheduler`
+- `/obsidian-prod/redis`
+
+Credentials come from the **EC2 instance role** (the daemon picks them up
+automatically — nothing in `.env.docker.prod`). The role grants
+`logs:CreateLogStream`/`logs:PutLogEvents` on `/obsidian-prod/*` but **not**
+`logs:CreateLogGroup`, so the log groups must be **pre-created by the Terraform
+monitoring module** before the containers start — a missing group makes the
+container fail to start. `awslogs-create-group` is deliberately omitted (it
+would fail against that policy anyway).
+
+Dev compose is unaffected: containers there use the default `json-file` driver,
+with rotation configured host-wide in `/etc/docker/daemon.json` for anything
+not on `awslogs`.
+
 ## Provisioned separately from this repo
 
 - **Postgres** — hosted Supabase (the `supabase` connection string).
