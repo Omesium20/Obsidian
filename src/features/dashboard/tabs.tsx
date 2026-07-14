@@ -132,8 +132,12 @@ function SubscriptionsPanel({ view, name }: { view: ViewKey; name: string }) {
 
 	useEffect(() => {
 		let cancelled = false;
+		/* eslint-disable react-hooks/set-state-in-effect -- deps-driven refetch:
+		   loading/error must flip synchronously so the spinner covers the whole
+		   fetch. The clean fix is a data-fetching library, not worth it yet. */
 		setLoading(true);
 		setFetchError(null);
+		/* eslint-enable react-hooks/set-state-in-effect */
 		api
 			.getRecurringStreams(view)
 			.then((data) => {
@@ -564,6 +568,9 @@ export function TabTransactions({
 		const isViewChange = prevViewRef.current !== view;
 		prevViewRef.current = view;
 		const effectivePage = isViewChange ? 1 : page;
+		/* eslint-disable react-hooks/set-state-in-effect -- deps-driven refetch:
+		   the view-change reset and loading/error flags must apply synchronously
+		   so the controls and spinner match the in-flight fetch. */
 		if (isViewChange) {
 			setPage(1);
 			// A category/search from the previous view may not apply to the new one;
@@ -577,6 +584,7 @@ export function TabTransactions({
 
 		setLoading(true);
 		setFetchError(null);
+		/* eslint-enable react-hooks/set-state-in-effect */
 		api
 			.getTransactionPage(view, effectivePage, "all", effectiveCategory || undefined, range, effectiveSearch || undefined)
 			.then((data) => {
@@ -1211,8 +1219,12 @@ function AccountTransactionsModal({
 
 	useEffect(() => {
 		let cancelled = false;
+		/* eslint-disable react-hooks/set-state-in-effect -- deps-driven refetch:
+		   loading/error must flip synchronously so the spinner covers the whole
+		   fetch. The clean fix is a data-fetching library, not worth it yet. */
 		setLoading(true);
 		setFetchError(null);
+		/* eslint-enable react-hooks/set-state-in-effect */
 		api
 			.getAccountTransactionPage(account.id, page, filter)
 			.then((data) => {

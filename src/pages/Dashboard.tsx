@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Wordmark } from "../components/Wordmark";
 import { IconBolt, IconChart, IconShield } from "../components/icons";
-import { useRouter } from "../lib/router";
+import { useRouter } from "../lib/routerContext";
 import { api, subscribeToSync, type DashboardSummary } from "../lib/api";
 import {
 	buildAccountsForView,
@@ -64,16 +64,20 @@ export function Dashboard() {
 		return data;
 	}, []);
 
+	// Initial load is inlined rather than via loadSummary so every setState
+	// happens inside a promise callback (react-hooks/set-state-in-effect).
 	useEffect(() => {
-		loadSummary()
+		api
+			.getDashboardSummary()
 			.then((data) => {
+				setSummary(data);
 				// Default to "group" view if the user is in a shared household,
 				// otherwise stay on "me". Only on first load.
 				if (data.members.length > 1) setView("group");
 			})
 			.catch((err) => console.error("[Dashboard] Failed to load summary:", err))
 			.finally(() => setLoading(false));
-	}, [loadSummary]);
+	}, []);
 
 	// Live-refresh: when the household's Plaid sync finishes (cron or on-demand,
 	// triggered by this user or any member), the server pushes a "sync:complete"

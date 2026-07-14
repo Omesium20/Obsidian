@@ -9,7 +9,7 @@ import {
 	IconSparkle,
 	IconCheck,
 } from "../components/icons";
-import { useRouter } from "../lib/router";
+import { useRouter } from "../lib/routerContext";
 
 export function Landing() {
 	return (

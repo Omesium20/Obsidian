@@ -8,7 +8,7 @@ import {
 	IconUser,
 	IconUsers,
 } from "../components/icons";
-import { useQueryParam, useRouter } from "../lib/router";
+import { useQueryParam, useRouter } from "../lib/routerContext";
 import { api, ApiError } from "../lib/api";
 import type { ReactNode } from "react";
 

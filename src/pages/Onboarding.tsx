@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePlaidLink, type PlaidLinkOnSuccess } from "react-plaid-link";
-import { useRouter, useQueryParam } from "../lib/router";
+import { useRouter, useQueryParam } from "../lib/routerContext";
 import { api, ApiError } from "../lib/api";
 import { Wordmark } from "../components/Wordmark";
 

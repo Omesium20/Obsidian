@@ -1,11 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { AuthBrand, AuthPaneTop } from "../components/AuthBrand";
 import { Field } from "../components/Field";
-import {
-	PasswordChecklist,
-	PasswordInput,
-	passwordValid,
-} from "../components/PasswordInput";
+import { PasswordChecklist, PasswordInput } from "../components/PasswordInput";
+import { passwordValid } from "../lib/passwordPolicy";
 import {
 	IconArrow,
 	IconArrowL,
@@ -16,7 +13,7 @@ import {
 	IconSparkle,
 	IconUser,
 } from "../components/icons";
-import { useQueryParam, useRouter } from "../lib/router";
+import { useQueryParam, useRouter } from "../lib/routerContext";
 import { api, ApiError } from "../lib/api";
 
 type FormData = {

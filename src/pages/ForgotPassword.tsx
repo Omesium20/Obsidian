@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { AuthBrand, AuthPaneTop } from "../components/AuthBrand";
 import { Field } from "../components/Field";
 import { IconArrow, IconArrowL, IconMail } from "../components/icons";
-import { useRouter } from "../lib/router";
+import { useRouter } from "../lib/routerContext";
 import { api } from "../lib/api";
 
 export function ForgotPassword() {

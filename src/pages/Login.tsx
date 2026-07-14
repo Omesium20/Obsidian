@@ -3,7 +3,7 @@ import { AuthBrand, AuthPaneTop } from "../components/AuthBrand";
 import { Field } from "../components/Field";
 import { PasswordInput } from "../components/PasswordInput";
 import { IconArrow, IconArrowL, IconMail } from "../components/icons";
-import { useQueryParam, useRouter } from "../lib/router";
+import { useQueryParam, useRouter } from "../lib/routerContext";
 import { api, ApiError } from "../lib/api";
 
 export function Login() {

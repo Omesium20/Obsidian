@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Router, useRouter } from "./lib/router";
+import { Router } from "./lib/router";
+import { useRouter } from "./lib/routerContext";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";

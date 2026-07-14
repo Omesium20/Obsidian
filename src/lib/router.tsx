@@ -1,13 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-
-type RouterCtx = {
-	path: string;
-	search: string;
-	navigate: (to: string) => void;
-};
-
-const Ctx = createContext<RouterCtx | null>(null);
+import { Ctx } from "./routerContext";
 
 function readLocation() {
 	return {
@@ -36,15 +29,4 @@ export function Router({ children }: { children: ReactNode }) {
 	}, []);
 
 	return <Ctx.Provider value={{ ...loc, navigate }}>{children}</Ctx.Provider>;
-}
-
-export function useRouter() {
-	const ctx = useContext(Ctx);
-	if (!ctx) throw new Error("useRouter must be used inside <Router>");
-	return ctx;
-}
-
-export function useQueryParam(name: string): string | null {
-	const { search } = useRouter();
-	return new URLSearchParams(search).get(name);
 }
