@@ -53,6 +53,18 @@ output "audit_archive_bucket" {
   value       = module.audit_pipeline.archive_bucket
 }
 
+output "smtp_username" {
+  description = "SES SMTP username — SMTP_USER in the app-env secret (read with: terraform output -raw smtp_username)"
+  value       = module.email.smtp_username
+  sensitive   = true
+}
+
+output "smtp_password" {
+  description = "SES SMTP password — SMTP_PASS in the app-env secret (read with: terraform output -raw smtp_password)"
+  value       = module.email.smtp_password
+  sensitive   = true
+}
+
 output "alerts_topic_arn" {
   description = "SNS topic CloudWatch alarms publish to"
   value       = module.monitoring.sns_topic_arn
