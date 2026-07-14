@@ -78,7 +78,7 @@ resource "aws_security_group" "api" {
 
 resource "aws_vpc_security_group_ingress_rule" "api_from_cloudfront" {
   security_group_id = aws_security_group.api.id
-  description       = "CloudFront /api/* behavior -> backend container"
+  description       = "CloudFront /api/* behavior to backend container"
   prefix_list_id    = data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id
   ip_protocol       = "tcp"
   from_port         = var.api_port
