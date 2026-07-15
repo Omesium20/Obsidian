@@ -19,6 +19,13 @@ export const createLinkToken = async (
 			// Plaid defaults to 90 days of history on a new Item; request 180 so
 			// the initial sync pulls a full six months (max 730).
 			transactions: { days_requested: 180 },
+			// OAuth institutions (Navy Federal, Chase, …) send the user to the
+			// bank's own site and back to this URI, which must exactly match an
+			// Allowed redirect URI in the Plaid dashboard. Unset = non-OAuth mode:
+			// OAuth banks then fail inside Link at institution select.
+			...(process.env.PLAID_REDIRECT_URI
+				? { redirect_uri: process.env.PLAID_REDIRECT_URI }
+				: {}),
 		});
 		return {
 			link_token: res.data.link_token,

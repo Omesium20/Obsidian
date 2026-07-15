@@ -24,6 +24,34 @@ net-worth snapshots.
 4. Multi-bank: the frontend re-mints a fresh `link_token` per additional
    institution; each exchange runs step 3 independently.
 
+## OAuth institutions (Navy Federal, Chase, …)
+
+Some US institutions authenticate on the **bank's own site**, not inside the
+Link widget. That flow only works when the link token is created with a
+`redirect_uri`, and it survives a full page reload:
+
+- `createLinkToken` passes `redirect_uri` from **`PLAID_REDIRECT_URI`** when
+  set (prod: `https://obsidian-secured.com/oauth-return`). The value must
+  exactly match an **Allowed redirect URI** in the Plaid dashboard
+  (Developers → API) — an unregistered URI makes `/link/token/create` itself
+  fail for *all* institutions, so register first, deploy second. Unset =
+  non-OAuth mode: OAuth banks error inside Link at institution select.
+- Frontend handoff lives in `src/lib/plaidOauth.ts`: both Link call sites
+  (`Onboarding` PlaidStep, `AddAccountModal`) stash
+  `{ link_token, returnTo }` in sessionStorage right before `open()`, because
+  the bank redirect reloads the SPA and wipes React state.
+- The bank returns the user to **`/oauth-return`** (`PlaidOauthReturn` page,
+  protected route). It re-initializes Link with the stashed token +
+  `receivedRedirectUri: window.location.href` — Plaid requires the *same*
+  token to resume — auto-opens, exchanges the `public_token` as usual, then
+  navigates to `returnTo`. For onboarding it also stashes the exchange result
+  so the wizard can rebuild its "connected" list after the reload.
+- Non-OAuth banks never leave the page; the stash is cleared in
+  `onSuccess`/`onExit` at the call sites.
+- Sandbox enforces the same OAuth requirements — local OAuth testing needs
+  `PLAID_REDIRECT_URI=http://localhost:5173/oauth-return` in `.env.dev` *and*
+  that URI registered in the dashboard.
+
 ## Transaction sync — `transactionsSyncService.ts`
 
 `syncTransactions(plaidItemRowId, accessToken, userId, startCursor?)`:

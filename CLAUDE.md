@@ -107,6 +107,7 @@ Pick **one dev environment per session** — native or containerized, not both
 Required: `supabase` (lowercase, PG URL), `JWT_ACCESS_SECRET`,
 `JWT_REFRESH_SECRET`, `PLAID_CLIENT_ID`, `PLAID_SANDBOX_SECRET` (prod:
 `PLAID_PRODUCTION_SECRET`), `PLAID_ENCRYPTION_KEY` (32-byte hex).
-Optional switches: `REDIS_URL`, `WORKER_ROLE=scheduler`, `SQS_AUDIT_QUEUE_URL`,
+Optional switches: `REDIS_URL`, `PLAID_REDIRECT_URI` (enables OAuth banks in
+Link; must match a dashboard Allowed redirect URI), `WORKER_ROLE=scheduler`, `SQS_AUDIT_QUEUE_URL`,
 `AWS_ENDPOINT_URL` (LocalStack; unset in prod), `ORIGIN_VERIFY_SECRET`
 (CloudFront origin header check, prod only). Details: docs/environment.md.

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { usePlaidLink, type PlaidLinkOnSuccess } from "react-plaid-link";
 import { api, ApiError } from "../../lib/api";
+import {
+	clearPlaidOauthState,
+	stashPlaidOauthState,
+} from "../../lib/plaidOauth";
 import { ModalShell } from "./modals";
 import {
 	ACCOUNT_TYPE_OPTIONS,
@@ -49,6 +53,9 @@ export function AddAccountModal({
 
 	const onSuccess = useCallback<PlaidLinkOnSuccess>(
 		async (publicToken) => {
+			// Non-OAuth bank: the flow finished in-page, so the OAuth stash written
+			// at open() was never consumed — drop it.
+			clearPlaidOauthState();
 			setPlaidError("");
 			setExchanging(true);
 			try {
@@ -67,7 +74,20 @@ export function AddAccountModal({
 		[onAdded, onClose]
 	);
 
-	const { open, ready } = usePlaidLink({ token: linkToken, onSuccess });
+	const { open, ready } = usePlaidLink({
+		token: linkToken,
+		onSuccess,
+		onExit: () => clearPlaidOauthState(),
+	});
+
+	// OAuth banks redirect the whole page to the bank's site; stash what
+	// /oauth-return needs to resume this Link session before opening. After the
+	// round-trip the dashboard remounts and refetches, so onAdded isn't needed.
+	const openLink = () => {
+		if (!linkToken) return;
+		stashPlaidOauthState({ token: linkToken, returnTo: "/dashboard" });
+		open();
+	};
 
 	if (mode === "manual") {
 		return (
@@ -90,7 +110,7 @@ export function AddAccountModal({
 					type="button"
 					className="db-link-row"
 					disabled={!ready || !linkToken || exchanging}
-					onClick={() => open()}
+					onClick={openLink}
 				>
 					<div>
 						<div className="db-link-row-t">

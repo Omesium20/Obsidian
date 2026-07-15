@@ -3,6 +3,12 @@ import { usePlaidLink, type PlaidLinkOnSuccess } from "react-plaid-link";
 import { useRouter, useQueryParam } from "../lib/routerContext";
 import { api, ApiError } from "../lib/api";
 import { Wordmark } from "../components/Wordmark";
+import {
+	clearPlaidOauthResult,
+	clearPlaidOauthState,
+	readPlaidOauthResult,
+	stashPlaidOauthState,
+} from "../lib/plaidOauth";
 
 type Step = 1 | 2 | 3;
 
@@ -25,8 +31,19 @@ export function Onboarding() {
 	const { navigate } = useRouter();
 	const skipInvite = useQueryParam("skipInvite") === "true";
 	const [step, setStep] = useState<Step>(1);
-	const [institutions, setInstitutions] = useState<LinkedInstitution[]>([]);
+	// An OAuth link bounces through the bank's site and /oauth-return, reloading
+	// the app — restore that just-linked institution into the wizard's list.
+	// (Lazy read only; cleared in the mount effect so StrictMode's double render
+	// sees the same value.)
+	const [institutions, setInstitutions] = useState<LinkedInstitution[]>(() => {
+		const oauthLinked = readPlaidOauthResult();
+		return oauthLinked ? [oauthLinked] : [];
+	});
 	const [sentInvites, setSentInvites] = useState<string[]>([]);
+
+	useEffect(() => {
+		clearPlaidOauthResult();
+	}, []);
 
 	const goDashboard = () => navigate("/dashboard");
 
@@ -133,6 +150,9 @@ function PlaidStep({
 
 	const onSuccess = useCallback<PlaidLinkOnSuccess>(
 		async (publicToken) => {
+			// Non-OAuth bank: the flow finished in-page, so the OAuth stash written
+			// at open() was never consumed — drop it.
+			clearPlaidOauthState();
 			setExchangeError("");
 			setExchanging(true);
 			try {
@@ -172,7 +192,16 @@ function PlaidStep({
 	const { open, ready } = usePlaidLink({
 		token: linkToken,
 		onSuccess,
+		onExit: () => clearPlaidOauthState(),
 	});
+
+	// OAuth banks redirect the whole page to the bank's site; stash what
+	// /oauth-return needs to resume this Link session before opening.
+	const openLink = () => {
+		if (!linkToken) return;
+		stashPlaidOauthState({ token: linkToken, returnTo: "/onboarding" });
+		open();
+	};
 
 	const linkedCount = institutions.length;
 
@@ -223,7 +252,7 @@ function PlaidStep({
 				<button
 					className="btn btn-brand"
 					disabled={!ready || exchanging || !linkToken}
-					onClick={() => open()}
+					onClick={openLink}
 				>
 					{exchanging
 						? "Connecting…"

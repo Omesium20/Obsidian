@@ -9,6 +9,7 @@ import { ResetPassword } from "./pages/ResetPassword";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Dashboard } from "./pages/Dashboard";
 import { Onboarding } from "./pages/Onboarding";
+import { PlaidOauthReturn } from "./pages/PlaidOauthReturn";
 import { api, ApiError, setSessionListeners, INACTIVITY_LIMIT_MS } from "./lib/api";
 
 const TITLES: Record<string, string> = {
@@ -20,6 +21,7 @@ const TITLES: Record<string, string> = {
 	"/invitations": "Accept invitation · Obsidian",
 	"/onboarding": "Set up · Obsidian",
 	"/dashboard": "Dashboard · Obsidian",
+	"/oauth-return": "Connecting your bank · Obsidian",
 };
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -104,6 +106,8 @@ function Routes() {
 			return <ProtectedRoute><Dashboard /></ProtectedRoute>;
 		case "/onboarding":
 			return <ProtectedRoute><Onboarding /></ProtectedRoute>;
+		case "/oauth-return":
+			return <ProtectedRoute><PlaidOauthReturn /></ProtectedRoute>;
 		case "/invitations":
 			return <AcceptInvitation />;
 		case "/":
